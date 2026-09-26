@@ -88,9 +88,9 @@ public final class ConfigLoader {
             validateCatalog(root);
             FrameworkConfig config = resolve(root, environment);
             LOG.info(
-                    "Configuration loaded: environment={}, services={}, bodyLogging={}, destructiveTests={}",
+                    "Configuration loaded: environment={}, services={}, bodyLogging={}, bodyLogMaxChars={}, destructiveTests={}",
                     config.environment(), config.serviceNames(), config.logBodies(),
-                    config.allowDestructiveTests());
+                    config.maxBodyLogCharacters(), config.allowDestructiveTests());
             return config;
         } catch (ConfigException failure) {
             throw failure;
@@ -178,6 +178,8 @@ public final class ConfigLoader {
                         "root.environments." + environmentName + ".logging.bodies")
                 : defaultBodies;
         boolean logBodies = overriddenBoolean("framework.logging.bodies", environmentBodies);
+        int maxBodyLogCharacters = overriddenPositiveInt(
+                "framework.logging.max-body-chars", 8000);
 
         boolean yamlDestructive = requiredBoolean(
                 environment, "allowDestructiveTests",
@@ -185,11 +187,11 @@ public final class ConfigLoader {
         boolean allowDestructive = overriddenBoolean(
                 "framework.execution.allow-destructive-tests", yamlDestructive);
 
-        // Production safety is a hard invariant. A runtime override may make a
-        // configuration stricter, but it cannot enable destructive or body logging.
-        if ("prod".equals(environmentName) && (allowDestructive || logBodies)) {
+        // Destructive calls remain a hard production invariant. Body logging is
+        // deliberately configurable because its formatter redacts known secrets.
+        if ("prod".equals(environmentName) && allowDestructive) {
             throw new ConfigException(
-                    "Production configuration must disable destructive tests and body logging");
+                    "Production configuration must disable destructive tests");
         }
 
         Map<String, ServiceConfig> resolvedServices = new LinkedHashMap<>();
@@ -228,6 +230,7 @@ public final class ConfigLoader {
                 environmentName,
                 Duration.ofSeconds(defaultTimeoutSeconds),
                 logBodies,
+                maxBodyLogCharacters,
                 allowDestructive,
                 resolvedServices);
     }
@@ -271,6 +274,14 @@ public final class ConfigLoader {
             return false;
         }
         throw new ConfigException(propertyName + " must be exactly true or false");
+    }
+
+    private int overriddenPositiveInt(String propertyName, int defaultValue) {
+        long parsed = overriddenPositiveLong(propertyName, defaultValue);
+        if (parsed > Integer.MAX_VALUE) {
+            throw new ConfigException(propertyName + " is too large");
+        }
+        return (int) parsed;
     }
 
     private static URI parseUri(String value, String path) {

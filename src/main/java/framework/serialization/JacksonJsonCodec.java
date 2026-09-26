@@ -4,9 +4,12 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.cfg.CoercionAction;
+import com.fasterxml.jackson.databind.cfg.CoercionInputShape;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.util.Objects;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 
@@ -46,6 +49,12 @@ public final class JacksonJsonCodec implements JsonCodec {
                 // This is not a replacement for complete schema validation.
                 .disable(MapperFeature.ALLOW_COERCION_OF_SCALARS)
                 .build();
+
+        // The service contracts serialize exact decimal values as JSON strings,
+        // for example "125.50". Permit that documented representation only for
+        // BigDecimal while continuing to reject unrelated scalar conversions.
+        this.mapper.coercionConfigFor(BigDecimal.class)
+                .setCoercion(CoercionInputShape.String, CoercionAction.TryConvert);
     }
 
     /**

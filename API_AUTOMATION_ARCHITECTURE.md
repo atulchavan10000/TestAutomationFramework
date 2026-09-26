@@ -399,9 +399,17 @@ Do not run tests, per the user's instruction.
 
 `LoggingInterceptor` optionally consumes `BodyLogFormatter` for both request and response bodies.
 Existing constructors leave body logging disabled; framework wiring enables it by supplying a formatter.
-Summaries remain at INFO and formatted bodies are logged at DEBUG. The interceptor checks the DEBUG
-level before copying or formatting bytes. `JacksonBodyLogFormatter` owns JSON redaction, size limits,
+Summaries and enabled bodies are logged at INFO. Request URIs include query parameters, and request and
+response headers are included by default. Only values with sensitive names are redacted; ordinary query
+parameters and headers remain visible. The interceptor checks the dedicated `logging.bodies` logger before
+copying or formatting bytes. `JacksonBodyLogFormatter` owns recursive JSON redaction, an exact character cap,
 and safe handling of malformed or non-text bodies; the original request/response evidence is unchanged.
+
+The consuming test project provides Logback at runtime and owns `logback-test.xml`. That file selects console
+formatting and the INFO level and publishes the default 8,000-character body cap through the validated
+`framework.logging.max-body-chars` system property. `logging.bodies` remains the YAML/runtime switch that decides
+whether a body formatter is installed. Production defaults to body logging disabled in the sample catalog, but
+this is a configurable policy rather than a framework prohibition. Destructive tests remain prohibited in PROD.
 
 ## Accepted package organization — 2026-09-25
 
@@ -440,7 +448,8 @@ physical file format and layout while preserving the accepted selection, precede
 lifecycle, and safety rules.
 The initial typed values are environment name, API base URI, default timeout, body-logging flag, and an
 allow-destructive-tests policy. QA and INT may allow destructive suites; production permits only explicitly
-safe groups, disables body logging, and cannot be selected accidentally. Secrets do not belong in property
+safe groups, defaults body logging to disabled, and cannot be selected accidentally. Consumers may deliberately
+enable redacted production body logging. Secrets do not belong in property
 files, TestNG XML, logs, exception messages, or ordinary Jenkins parameters; later secret values come from
 credential-backed runtime sources. Startup logs show a redacted effective summary and selected sources.
 
@@ -492,9 +501,9 @@ The first configuration slice is implemented under `framework.config`: `ConfigLo
 a command-line `environment` system property to TestNG. `ApiClientFactory` accepts typed configuration and
 `CreateUserTest` no longer reads environment variables directly. Authentication configuration intentionally stops
 at `none` and `password-login` schemes until authentication architecture is discussed. INT and PROD use reserved
-`.invalid` hosts. Production body logging and the `allowDestructiveTests` flag cannot be enabled by catalog or
-runtime overrides; enforcing that flag against TestNG groups remains lifecycle work. Compilation passes; tests
-were not executed.
+`.invalid` hosts. Production body logging is consumer-configurable; the `allowDestructiveTests` flag cannot be
+enabled for PROD. A TestNG listener enforces that flag for tests in the `destructive` group. Compilation passes;
+tests were not executed.
 
 ## Planned TestNG configuration lifecycle — 2026-09-26
 
@@ -511,7 +520,21 @@ independent of TestNG; the listener and base class belong to the consuming test 
 Do not turn the base class into a global service locator or a container for every test utility. In particular,
 `TestContext`, API objects, created entity IDs, request data, and other mutable invocation state do not belong in
 shared base fields: DataProvider rows and parallel test invocations require separate instances/local state. The
-same suite lifecycle integration will later enforce `allowDestructiveTests` against TestNG groups before calls run.
+same suite lifecycle integration enforces `allowDestructiveTests` against TestNG groups before calls run.
+
+## Accepted destructive-test execution policy — 2026-09-26
+
+Tests that create, update, delete, reserve, charge, or otherwise mutate durable service state are explicitly
+tagged with the TestNG `destructive` group. A suite-level `DestructiveTestGuard` reads the already-resolved
+`FrameworkConfig` before each test method. When `allowDestructiveTests` is false, the listener records those
+tests as skipped before their bodies or service calls run. This keeps a production smoke run successful while
+making the excluded coverage visible in TestNG and CI reports.
+
+Skipping applies only to a deliberate environment policy. Missing suite configuration, invalid YAML, an unknown
+environment, and other setup errors still fail the run because they do not represent intentionally excluded
+tests. `BaseApiTest` remains thin: it exposes the immutable suite configuration and client construction, while
+the listener owns enforcement. This also protects tests that do not inherit from `BaseApiTest` and avoids
+repeating guard code in every test.
 
 ## Accepted microservice test-system topology — 2026-09-26
 

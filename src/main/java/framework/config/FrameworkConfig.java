@@ -18,6 +18,7 @@ public final class FrameworkConfig {
     private final String environment;
     private final Duration defaultHttpTimeout;
     private final boolean logBodies;
+    private final int maxBodyLogCharacters;
     private final boolean allowDestructiveTests;
     private final Map<String, ServiceConfig> services;
 
@@ -25,6 +26,7 @@ public final class FrameworkConfig {
             String environment,
             Duration defaultHttpTimeout,
             boolean logBodies,
+            int maxBodyLogCharacters,
             boolean allowDestructiveTests,
             Map<String, ServiceConfig> services) {
 
@@ -36,6 +38,10 @@ public final class FrameworkConfig {
         }
 
         this.logBodies = logBodies;
+        if (maxBodyLogCharacters < 1) {
+            throw new IllegalArgumentException("Maximum body log characters must be positive");
+        }
+        this.maxBodyLogCharacters = maxBodyLogCharacters;
         this.allowDestructiveTests = allowDestructiveTests;
 
         Objects.requireNonNull(services, "Services must not be null");
@@ -62,6 +68,11 @@ public final class FrameworkConfig {
 
     public boolean logBodies() {
         return logBodies;
+    }
+
+    /** Maximum characters retained from a formatted request or response body. */
+    public int maxBodyLogCharacters() {
+        return maxBodyLogCharacters;
     }
 
     public boolean allowDestructiveTests() {

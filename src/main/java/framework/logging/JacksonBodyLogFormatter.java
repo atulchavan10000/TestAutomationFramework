@@ -17,18 +17,21 @@ public final class JacksonBodyLogFormatter implements BodyLogFormatter {
     private final ObjectMapper mapper = JsonMapper.builder()
             .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).build();
     private final int maxInputBytes, maxOutputChars;
-    private final Set<String> redactedFields;
+    private final SensitiveDataRedactor redactor;
     public JacksonBodyLogFormatter(int maxInputBytes, int maxOutputChars, Set<String> redactedFields) {
         if (maxInputBytes < 1 || maxOutputChars < 1) throw new IllegalArgumentException("Limits must be positive");
         this.maxInputBytes = maxInputBytes; this.maxOutputChars = maxOutputChars;
-        Set<String> fields = new HashSet<>();
-        for (String field : redactedFields) fields.add(field.toLowerCase(Locale.ROOT));
-        this.redactedFields = Set.copyOf(fields);
+        this.redactor = new SensitiveDataRedactor(redactedFields);
     }
     public static JacksonBodyLogFormatter defaults() {
-        return new JacksonBodyLogFormatter(65536, 4096,
-                Set.of("password", "password_hash", "passwordHash", "token", "accessToken",
-                        "refreshToken", "authorization", "secret", "apiKey"));
+        return defaults(8000);
+    }
+    /** Uses the shared sensitive-name policy and a caller-selected character cap. */
+    public static JacksonBodyLogFormatter defaults(int maxOutputChars) {
+        return new JacksonBodyLogFormatter(
+                65536,
+                maxOutputChars,
+                SensitiveDataRedactor.defaults().sensitiveNames());
     }
     @Override public String format(byte[] body, String contentType) {
         if (body == null || body.length == 0) return "<empty>";
@@ -51,8 +54,10 @@ public final class JacksonBodyLogFormatter implements BodyLogFormatter {
             }
             // Keep an event on one line, and cap the final escaped output.
             formatted = formatted.replace("\r", "\\r").replace("\n", "\\n").replace("\t", "\\t");
-            return formatted.length() <= maxOutputChars ? formatted :
-                    formatted.substring(0, maxOutputChars) + "...<truncated>";
+            if (formatted.length() <= maxOutputChars) return formatted;
+            String marker = "...<truncated>";
+            if (maxOutputChars <= marker.length()) return marker.substring(0, maxOutputChars);
+            return formatted.substring(0, maxOutputChars - marker.length()) + marker;
         } catch (Exception ignored) {
             return "<body omitted: parsing, charset, or redaction failed>";
         }
@@ -63,7 +68,7 @@ public final class JacksonBodyLogFormatter implements BodyLogFormatter {
             List<String> names = new ArrayList<>();
             object.fieldNames().forEachRemaining(names::add);
             for (String name : names) {
-                if (redactedFields.contains(name.toLowerCase(Locale.ROOT))) object.put(name, "[REDACTED]");
+                if (redactor.isSensitiveName(name)) object.put(name, "[REDACTED]");
                 else redact(object.get(name));
             }
         } else if (node.isArray()) {

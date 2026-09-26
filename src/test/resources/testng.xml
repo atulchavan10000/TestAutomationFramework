@@ -5,6 +5,7 @@
 
     <listeners>
         <listener class-name="support.SuiteConfigListener"/>
+        <listener class-name="support.DestructiveTestGuard"/>
     </listeners>
 
     <test name="Service tests">

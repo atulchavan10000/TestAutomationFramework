@@ -4,6 +4,7 @@ import framework.context.TestContext;
 import framework.http.HttpRequest;
 import framework.http.HttpResponse;
 import framework.logging.BodyLogFormatter;
+import framework.logging.SensitiveDataRedactor;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,8 +17,8 @@ import java.util.concurrent.TimeUnit;
  * SLF4J is the logging API; Logback is the intended runtime implementation.
  * Logback configuration selects levels, destinations, and formatting separately.
  *
- * INFO contains request/response summaries. When a BodyLogFormatter is supplied,
- * DEBUG also contains safely formatted request and response bodies.
+ * INFO contains request/response summaries, redacted headers and query values.
+ * When a BodyLogFormatter is supplied, INFO also contains redacted, capped bodies.
  *
  * Example registration order:
  * CommonHeadersInterceptor -> CorrelationIdInterceptor -> LoggingInterceptor
@@ -31,10 +32,12 @@ public final class LoggingInterceptor implements HttpInterceptor {
 
     // A shared logger routes events; it does not hold this test's request state.
     private static final Logger LOG = LoggerFactory.getLogger(LoggingInterceptor.class);
+    private static final Logger BODY_LOG = LoggerFactory.getLogger("logging.bodies");
 
     private final TestContext context;
     private final String correlationHeaderName;
     private final BodyLogFormatter bodyFormatter;
+    private final SensitiveDataRedactor redactor;
 
     /** Uses the default correlation-header convention. */
     public LoggingInterceptor(TestContext context) {
@@ -54,10 +57,20 @@ public final class LoggingInterceptor implements HttpInterceptor {
             TestContext context,
             String correlationHeaderName,
             BodyLogFormatter bodyFormatter) {
+        this(context, correlationHeaderName, bodyFormatter, SensitiveDataRedactor.defaults());
+    }
+
+    /** Allows a consumer to replace the default sensitive-name policy. */
+    public LoggingInterceptor(
+            TestContext context,
+            String correlationHeaderName,
+            BodyLogFormatter bodyFormatter,
+            SensitiveDataRedactor redactor) {
         this.context = Objects.requireNonNull(context, "Test context must not be null");
         this.correlationHeaderName = Objects.requireNonNull(
                 correlationHeaderName, "Correlation header name must not be null");
         this.bodyFormatter = bodyFormatter;
+        this.redactor = Objects.requireNonNull(redactor, "Redactor must not be null");
         if (correlationHeaderName.trim().isEmpty()) {
             throw new IllegalArgumentException("Correlation header name must not be blank");
         }
@@ -77,16 +90,17 @@ public final class LoggingInterceptor implements HttpInterceptor {
                 .firstValue(correlationHeaderName).orElse("<absent>"));
 
         // {} placeholders are filled by SLF4J. Avoid string concatenation here.
-        LOG.info("HTTP request: testId={}, correlationId={}, method={}, host={}",
-                testId, correlationId, request.method(), request.uri().getHost());
+        LOG.info("HTTP request: testId={}, correlationId={}, method={}, uri={}, headers={}",
+                testId, correlationId, request.method(), redactor.uri(request.uri()),
+                redactor.headers(request.headers()));
 
-        // Formatting can parse JSON and copy body bytes, so do it only when DEBUG
-        // is active. The formatter works on a copy and never changes what is sent.
-        if (bodyFormatter != null && LOG.isDebugEnabled() && request.hasBody()) {
+        // Formatting can parse JSON and copy body bytes, so avoid that work when
+        // the dedicated body logger is disabled. Formatting never changes the body.
+        if (bodyFormatter != null && BODY_LOG.isInfoEnabled() && request.hasBody()) {
             String contentType = request.headers()
                     .firstValue("Content-Type")
                     .orElse(null);
-            LOG.debug("HTTP request body: testId={}, correlationId={}, body={}",
+            BODY_LOG.info("HTTP request body: testId={}, correlationId={}, body={}",
                     testId, correlationId, bodyFormatter.format(request.body(), contentType));
         }
 
@@ -109,12 +123,12 @@ public final class LoggingInterceptor implements HttpInterceptor {
         // A 400/500 is a received response, not an execution exception or automatic
         // test failure. Tests own status expectations. The response's elapsed time
         // is measured by the transport; the failure duration above is measured here.
-        LOG.info("HTTP response: testId={}, correlationId={}, status={}, bodyBytes={}, transportMs={}",
-                testId, correlationId, response.statusCode(), response.bodyLength(),
-                response.elapsedTime().toMillis());
+        LOG.info("HTTP response: testId={}, correlationId={}, status={}, headers={}, bodyBytes={}, transportMs={}",
+                testId, correlationId, response.statusCode(), redactor.headers(response.headers()),
+                response.bodyLength(), response.elapsedTime().toMillis());
 
-        if (bodyFormatter != null && LOG.isDebugEnabled() && response.bodyLength() > 0) {
-            LOG.debug("HTTP response body: testId={}, correlationId={}, body={}",
+        if (bodyFormatter != null && BODY_LOG.isInfoEnabled() && response.bodyLength() > 0) {
+            BODY_LOG.info("HTTP response body: testId={}, correlationId={}, body={}",
                     testId, correlationId,
                     bodyFormatter.format(response.body(), response.contentType().orElse(null)));
         }

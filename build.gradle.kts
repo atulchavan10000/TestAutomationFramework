@@ -23,6 +23,9 @@ dependencies {
     implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310:2.22.2")
     testImplementation("org.testng:testng:7.11.0")
     testImplementation("org.hamcrest:hamcrest:3.0")
+    // The reusable code logs through SLF4J. The consuming test project chooses
+    // Logback as its runtime provider and owns logback-test.xml.
+    testRuntimeOnly("ch.qos.logback:logback-classic:1.6.4")
 }
 
 tasks.test {

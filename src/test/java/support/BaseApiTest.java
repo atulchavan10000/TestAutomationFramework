@@ -17,10 +17,10 @@ public abstract class BaseApiTest {
     @BeforeClass(alwaysRun = true)
     public final void receiveSuiteConfiguration(ITestContext testContext) {
         Object value = testContext.getSuite().getAttribute(SuiteConfigListener.CONFIG_ATTRIBUTE);
-        if (!(value instanceof FrameworkConfig)) {
+        if (!(value instanceof FrameworkConfig config)) {
             throw new IllegalStateException("Suite configuration listener was not registered");
         }
-        frameworkConfig = (FrameworkConfig) value;
+        frameworkConfig = config;
     }
 
     protected final FrameworkConfig config() {

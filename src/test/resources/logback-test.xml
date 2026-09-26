@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <!--
+      This consumer-owned value becomes a system property while Logback starts.
+      ConfigLoader reads and validates that property without depending on Logback.
+      A JVM -Dframework.logging.max-body-chars value can replace the default.
+    -->
+    <property scope="system"
+              name="framework.logging.max-body-chars"
+              value="${framework.logging.max-body-chars:-8000}"/>
+
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} %-5level [%thread] %logger{40} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- Bodies use their own logger so consumers can later disable or reroute them. -->
+    <logger name="logging.bodies" level="INFO"/>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+    </root>
+</configuration>

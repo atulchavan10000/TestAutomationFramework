@@ -27,7 +27,8 @@ public final class ApiClientFactory {
 
         ServiceConfig service = config.service(serviceName);
         return forTest(
-                service.baseUri(), service.timeout(), context, config.logBodies());
+                service.baseUri(), service.timeout(), context, config.logBodies(),
+                config.maxBodyLogCharacters());
     }
 
     /**
@@ -35,11 +36,23 @@ public final class ApiClientFactory {
      * Normal TestNG wiring should use the FrameworkConfig overload above.
      */
     public static ApiClient forTest(URI baseUri, Duration timeout, TestContext context, boolean logBodies) {
+        return forTest(baseUri, timeout, context, logBodies, 8000);
+    }
+
+    /** Builds a client with an explicit body-logging character limit. */
+    public static ApiClient forTest(
+            URI baseUri,
+            Duration timeout,
+            TestContext context,
+            boolean logBodies,
+            int maxBodyLogCharacters) {
         HttpHeaders common = HttpHeaders.builder().set("Accept", "application/json").build();
         return new ApiClient(baseUri, timeout, new JacksonJsonCodec(), new RestAssuredHttpClient(),
                 List.of(new CommonHeadersInterceptor(common),
                         new CorrelationIdInterceptor(context),
                         new LoggingInterceptor(context, "X-Correlation-ID",
-                                logBodies ? JacksonBodyLogFormatter.defaults() : null)));
+                                logBodies
+                                        ? JacksonBodyLogFormatter.defaults(maxBodyLogCharacters)
+                                        : null)));
     }
 }

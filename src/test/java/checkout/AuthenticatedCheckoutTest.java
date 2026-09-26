@@ -26,7 +26,7 @@ import static org.hamcrest.Matchers.*;
 
 /** Proves the authenticated workflow across four independently configured services. */
 public final class AuthenticatedCheckoutTest extends BaseApiTest {
-    @Test(groups = "service")
+    @Test(groups = {"service", "destructive"})
     public void authenticatedUserPaysForAndConfirmsOrder() {
         // Sharing one test-scoped context gives every call the same correlation ID.
         TestContext context = new TestContext(UUID.randomUUID().toString());

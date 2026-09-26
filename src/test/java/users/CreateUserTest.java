@@ -25,7 +25,7 @@ public class CreateUserTest extends BaseApiTest {
     @DataProvider(name = "names", parallel = true)
     public Object[][] names() { return new Object[][] {{"Alice", "Automation"}, {"Bob", "Automation"}}; }
 
-    @Test(groups = "service", dataProvider = "names")
+    @Test(groups = {"service", "destructive"}, dataProvider = "names")
     public void createsAndReadsUser(String firstName, String lastName) {
         // Locals belong to this invocation. No shared test fields or global context.
         TestContext context = new TestContext(UUID.randomUUID().toString());
