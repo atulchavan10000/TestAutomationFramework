@@ -1,0 +1,16 @@
+<!DOCTYPE suite SYSTEM "https://testng.org/testng-1.1.dtd">
+<suite name="API automation suite">
+    <!-- Local runs use QA. TestNG lets -Denvironment=int override this value. -->
+    <parameter name="environment" value="qa"/>
+
+    <listeners>
+        <listener class-name="support.SuiteConfigListener"/>
+    </listeners>
+
+    <test name="Service tests">
+        <packages>
+            <package name="users"/>
+            <package name="checkout"/>
+        </packages>
+    </test>
+</suite>
