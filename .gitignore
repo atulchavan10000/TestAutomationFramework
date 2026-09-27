@@ -12,7 +12,6 @@ out/
 # ==========================================
 .gradle/
 build/
-!gradle/wrapper/gradle-wrapper.jar
 
 # Gradle cache
 .gradle-cache/
@@ -82,3 +81,4 @@ logs/
 target/
 
 
+!gradle/wrapper/gradle-wrapper.jar
