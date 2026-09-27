@@ -8,10 +8,18 @@
         <listener class-name="support.DestructiveTestGuard"/>
     </listeners>
 
-    <test name="Service tests">
-        <packages>
-            <package name="users"/>
-            <package name="checkout"/>
-        </packages>
+    <test name="Jenkins API suite">
+        <!-- These classes produce exactly 100 TestNG invocations through their data providers. -->
+        <classes>
+            <class name="health.ServiceHealthTest"/>
+            <class name="users.UserServiceCoverageTest"/>
+            <class name="authentication.AuthenticationServiceTest"/>
+            <class name="products.ProductServiceTest"/>
+            <class name="orders.OrderServiceTest"/>
+            <class name="payments.PaymentServiceTest"/>
+            <class name="testsupport.TestSupportServiceTest"/>
+            <class name="gateway.GatewayServiceTest"/>
+            <class name="endtoend.CheckoutJourneyTest"/>
+        </classes>
     </test>
 </suite>
