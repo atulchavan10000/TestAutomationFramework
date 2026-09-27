@@ -1,0 +1,88 @@
+name: api-test-jenkins
+
+x-agent-environment: &agent-environment
+  JENKINS_URL: http://controller:8080
+  JENKINS_WEB_SOCKET: "true"
+  JENKINS_AGENT_WORKDIR: /home/jenkins/agent
+
+x-agent-common: &agent-common
+  build:
+      context: ../../images/agent
+      dockerfile: Dockerfile
+  image: api-test-jenkins-agent:stage1
+  restart: unless-stopped
+  init: true
+  profiles:
+    - agents
+  depends_on:
+    - controller
+  networks:
+    - jenkins
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+
+services:
+  controller:
+    build:
+      context: ../../images/controller
+      dockerfile: Dockerfile
+    image: api-test-jenkins-controller:stage1
+    container_name: api-test-jenkins-controller
+    restart: unless-stopped
+    init: true
+    ports:
+      - "8080:8080"
+    environment:
+      JENKINS_JAVA_OPTS: "-Xms512m -Xmx2g"
+    volumes:
+      - controller_home:/var/jenkins_home
+    networks:
+      - jenkins
+
+  agent-1:
+    <<: *agent-common
+    container_name: api-test-jenkins-agent-1
+    environment:
+      <<: *agent-environment
+      JENKINS_AGENT_NAME: workstation-agent-1
+      JENKINS_SECRET: ${JENKINS_AGENT_1_SECRET:-replace-after-node-creation}
+    volumes:
+      - agent_1_work:/home/jenkins/agent
+      - agent_1_gradle:/home/jenkins/.gradle
+
+  agent-2:
+    <<: *agent-common
+    container_name: api-test-jenkins-agent-2
+    environment:
+      <<: *agent-environment
+      JENKINS_AGENT_NAME: workstation-agent-2
+      JENKINS_SECRET: ${JENKINS_AGENT_2_SECRET:-replace-after-node-creation}
+    volumes:
+      - agent_2_work:/home/jenkins/agent
+      - agent_2_gradle:/home/jenkins/.gradle
+
+  agent-3:
+    <<: *agent-common
+    container_name: api-test-jenkins-agent-3
+    environment:
+      <<: *agent-environment
+      JENKINS_AGENT_NAME: workstation-agent-3
+      JENKINS_SECRET: ${JENKINS_AGENT_3_SECRET:-replace-after-node-creation}
+    volumes:
+      - agent_3_work:/home/jenkins/agent
+      - agent_3_gradle:/home/jenkins/.gradle
+
+networks:
+  jenkins:
+    name: api-test-jenkins-network
+
+volumes:
+  controller_home:
+  agent_1_work:
+  agent_1_gradle:
+  agent_2_work:
+  agent_2_gradle:
+  agent_3_work:
+  agent_3_gradle:
+
+

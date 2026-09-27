@@ -1,0 +1,9 @@
+workflow-aggregator:608.v67378e9d3db_1
+git:5.10.1
+github:1.47.0
+github-branch-source:1983.vfa_27ed961853
+credentials-binding:728.v902a_273b_8947
+junit:1431.vc0d98912a_756
+pipeline-stage-view:2.41
+ws-cleanup:0.49
+timestamper:1.30
