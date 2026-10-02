@@ -23,6 +23,8 @@ import java.util.UUID;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
+import static support.TestSteps.step;
+import static support.TestSteps.validation;
 
 /** Proves the authenticated workflow across four independently configured services. */
 public final class AuthenticatedCheckoutTest extends BaseApiTest {
@@ -35,11 +37,14 @@ public final class AuthenticatedCheckoutTest extends BaseApiTest {
         OrderApi orders = new OrderApi(client("order-service", context));
         PaymentApi payments = new PaymentApi(client("payment-service", context));
 
-        ApiResponse<LoginResponse> loginResult = auth.login("user1", "Password123!");
-        assertThat(loginResult.rawResponse().statusCode(), is(200));
+        ApiResponse<LoginResponse> loginResult = step("Authenticate the checkout user",
+                () -> auth.login("user1", "Password123!"));
         String token = loginResult.body().accessToken();
-        assertThat(token, notNullValue());
-        assertThat(token.isBlank(), is(false));
+        validation("Authentication returns a usable access token", () -> {
+            assertThat(loginResult.rawResponse().statusCode(), is(200));
+            assertThat(token, notNullValue());
+            assertThat(token.isBlank(), is(false));
+        });
 
         long productId = 0;
         try {
@@ -51,33 +56,49 @@ public final class AuthenticatedCheckoutTest extends BaseApiTest {
                     3,
                     5.0,
                     "Created and removed by one test invocation");
-            ApiResponse<ProductResponse> productResult = products.create(productRequest);
-            assertThat(productResult.rawResponse().statusCode(), is(201));
+            ApiResponse<ProductResponse> productResult = step("Create a product for checkout",
+                    () -> products.create(productRequest));
+            validation("The checkout product is created",
+                    () -> assertThat(productResult.rawResponse().statusCode(), is(201)));
             productId = productResult.body().id();
 
-            ApiResponse<OrderResponse> orderResult = orders.create(
-                    new CreateOrderRequest(List.of(new OrderItemRequest(productId, 2))), token);
-            assertThat(orderResult.rawResponse().statusCode(), is(201));
+            long createdProductId = productId;
+            ApiResponse<OrderResponse> orderResult = step("Create an order and reserve product stock",
+                    () -> orders.create(new CreateOrderRequest(
+                            List.of(new OrderItemRequest(createdProductId, 2))), token));
             OrderResponse pending = orderResult.body();
-            assertThat(pending.status(), is("PENDING_PAYMENT"));
-            assertThat(pending.totalAmount(), comparesEqualTo(new BigDecimal("251.00")));
+            validation("The order is pending payment with the expected total", () -> {
+                assertThat(orderResult.rawResponse().statusCode(), is(201));
+                assertThat(pending.status(), is("PENDING_PAYMENT"));
+                assertThat(pending.totalAmount(), comparesEqualTo(new BigDecimal("251.00")));
+            });
 
-            ApiResponse<PaymentResponse> paymentResult = payments.pay(
-                    new PaymentRequest(pending.id(), pending.totalAmount(), pending.currency(), "CARD"),
-                    token,
-                    UUID.randomUUID().toString());
-            assertThat(paymentResult.rawResponse().statusCode(), is(201));
-            assertThat(paymentResult.body().status(), is("SUCCESS"));
-            assertThat(paymentResult.body().orderId(), is(pending.id()));
+            ApiResponse<PaymentResponse> paymentResult = step("Pay for the pending order",
+                    () -> payments.pay(
+                            new PaymentRequest(pending.id(), pending.totalAmount(), pending.currency(), "CARD"),
+                            token,
+                            UUID.randomUUID().toString()));
+            validation("The payment succeeds for the pending order", () -> {
+                assertThat(paymentResult.rawResponse().statusCode(), is(201));
+                assertThat(paymentResult.body().status(), is("SUCCESS"));
+                assertThat(paymentResult.body().orderId(), is(pending.id()));
+            });
 
-            ApiResponse<OrderResponse> confirmedResult = orders.get(pending.id(), token);
-            assertThat(confirmedResult.rawResponse().statusCode(), is(200));
-            assertThat(confirmedResult.body().status(), is("CONFIRMED"));
-            assertThat(confirmedResult.body().paymentId(), is(paymentResult.body().id()));
+            ApiResponse<OrderResponse> confirmedResult = step("Read the order after payment",
+                    () -> orders.get(pending.id(), token));
+            validation("The order is confirmed and references the payment", () -> {
+                assertThat(confirmedResult.rawResponse().statusCode(), is(200));
+                assertThat(confirmedResult.body().status(), is("CONFIRMED"));
+                assertThat(confirmedResult.body().paymentId(), is(paymentResult.body().id()));
+            });
         } finally {
             // The product is owned by this test. Orders keep a captured product ID and price.
             if (productId != 0) {
-                assertThat(products.delete(productId).statusCode(), is(204));
+                long id = productId;
+                framework.http.HttpResponse deletion = step("Delete the checkout product fixture",
+                        () -> products.delete(id));
+                validation("Product cleanup returns HTTP 204",
+                        () -> assertThat(deletion.statusCode(), is(204)));
             }
         }
     }

@@ -11,6 +11,8 @@ import users.model.CreateUserResponse;
 import java.util.UUID;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
+import static support.TestSteps.step;
+import static support.TestSteps.validation;
 import support.BaseApiTest;
 
 /**
@@ -36,33 +38,43 @@ public class CreateUserTest extends BaseApiTest {
         Long createdId = null;
         Throwable primaryFailure = null;
         try {
-            ApiResponse<CreateUserResponse> result = users.createUser(input);
+            ApiResponse<CreateUserResponse> result = step("Create user " + input.getEmail(),
+                    () -> users.createUser(input));
             CreateUserResponse created = result.body();
             if (created != null) createdId = created.getId(); // capture before assertions for cleanup
-            assertThat(result.rawResponse().statusCode(), is(201));
-            assertThat(created, notNullValue());
-            assertThat(created.getId(), greaterThan(0L));
-            assertThat(created.getFirstName(), is(firstName));
-            assertThat(created.getLastName(), is(lastName));
-            assertThat(created.getEmail(), is(input.getEmail()));
-            assertThat(created.getRole(), is("USER"));
-            assertThat(created.getStatus(), is("ACTIVE"));
-            assertThat(created.getUsername(), is(input.getEmail().split("@")[0]));
-            assertThat(created.getCreatedAt(), notNullValue());
+            validation("The created user contains all expected fields", () -> {
+                assertThat(result.rawResponse().statusCode(), is(201));
+                assertThat(created, notNullValue());
+                assertThat(created.getId(), greaterThan(0L));
+                assertThat(created.getFirstName(), is(firstName));
+                assertThat(created.getLastName(), is(lastName));
+                assertThat(created.getEmail(), is(input.getEmail()));
+                assertThat(created.getRole(), is("USER"));
+                assertThat(created.getStatus(), is("ACTIVE"));
+                assertThat(created.getUsername(), is(input.getEmail().split("@")[0]));
+                assertThat(created.getCreatedAt(), notNullValue());
+            });
             String correlation = context.correlationId().orElseThrow();
 
-            ApiResponse<CreateUserResponse> fetched = users.getUser(createdId);
-            assertThat(fetched.rawResponse().statusCode(), is(200));
-            assertThat(fetched.body().getId(), is(createdId));
-            assertThat(fetched.body().getEmail(), is(input.getEmail()));
-            assertThat(context.correlationId().orElseThrow(), is(correlation));
+            ApiResponse<CreateUserResponse> fetched = step("Read the created user",
+                    () -> users.getUser(created.getId()));
+            validation("The fetched user and correlation ID match the create operation", () -> {
+                assertThat(fetched.rawResponse().statusCode(), is(200));
+                assertThat(fetched.body().getId(), is(created.getId()));
+                assertThat(fetched.body().getEmail(), is(input.getEmail()));
+                assertThat(context.correlationId().orElseThrow(), is(correlation));
+            });
         } catch (RuntimeException | AssertionError failure) {
             primaryFailure = failure;
             throw failure;
         } finally {
             if (createdId != null) {
                 try {
-                    assertThat(users.deleteUser(createdId).statusCode(), is(204));
+                    long id = createdId;
+                    HttpResponse deletion = step("Delete the created user",
+                            () -> users.deleteUser(id));
+                    validation("User cleanup returns HTTP 204",
+                            () -> assertThat(deletion.statusCode(), is(204)));
                 } catch (RuntimeException | AssertionError cleanupFailure) {
                     if (primaryFailure != null) primaryFailure.addSuppressed(cleanupFailure);
                     else throw cleanupFailure;
@@ -75,8 +87,11 @@ public class CreateUserTest extends BaseApiTest {
     public void malformedPayloadReturnsValidationEvidence() {
         UserApi users = new UserApi(client(
                 SERVICE_NAME, new TestContext(UUID.randomUUID().toString())));
-        HttpResponse response = users.createUserRaw(RawBody.json("{"), RequestOptions.empty());
-        assertThat(response.statusCode(), is(422));
-        assertThat(response.bodyLength(), greaterThan(0));
+        HttpResponse response = step("Submit a malformed JSON user payload",
+                () -> users.createUserRaw(RawBody.json("{"), RequestOptions.empty()));
+        validation("Malformed JSON returns validation evidence", () -> {
+            assertThat(response.statusCode(), is(422));
+            assertThat(response.bodyLength(), greaterThan(0));
+        });
     }
 }

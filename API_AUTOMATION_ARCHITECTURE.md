@@ -401,8 +401,7 @@ Do not run tests, per the user's instruction.
 Existing constructors leave body logging disabled; framework wiring enables it by supplying a formatter.
 Summaries and enabled bodies are logged at INFO. Request URIs include query parameters, and request and
 response headers are included by default. Only values with sensitive names are redacted; ordinary query
-parameters and headers remain visible. The interceptor checks the dedicated `logging.bodies` logger before
-copying or formatting bytes. `JacksonBodyLogFormatter` owns recursive JSON redaction, an exact character cap,
+parameters and headers remain visible. `JacksonBodyLogFormatter` owns recursive JSON redaction, an exact character cap,
 and safe handling of malformed or non-text bodies; the original request/response evidence is unchanged.
 
 The consuming test project provides Logback at runtime and owns `logback-test.xml`. That file selects console
@@ -410,6 +409,19 @@ formatting and the INFO level and publishes the default 8,000-character body cap
 `framework.logging.max-body-chars` system property. `logging.bodies` remains the YAML/runtime switch that decides
 whether a body formatter is installed. Production defaults to body logging disabled in the sample catalog, but
 this is a configurable policy rather than a framework prohibition. Destructive tests remain prohibited in PROD.
+
+### Accepted readable execution logging — 2026-09-29
+
+Console output is organized at three distinct levels. A consumer-side TestNG listener writes a prominent test-case
+start banner and a matching end banner containing the final status and duration. Test authors use the lightweight
+`TestSteps` helper to name business actions and validations explicitly; the helper reports start, pass, failure,
+and duration without changing assertion behavior. The HTTP interceptor writes separate multi-line request and
+response blocks inside the active step, including test name, step name, IDs, URI, headers, body, status, and timing.
+
+The framework does not attempt to infer business steps or successful validations from HTTP calls. One call may be
+only part of a business step, and receiving a response does not prove a test expectation. Tests therefore continue
+to own assertions and give their validations meaningful names. Test and step identity is carried through SLF4J MDC
+for the current synchronous TestNG worker thread and is cleared after every invocation to prevent thread-reuse leaks.
 
 ## Accepted package organization — 2026-09-25
 

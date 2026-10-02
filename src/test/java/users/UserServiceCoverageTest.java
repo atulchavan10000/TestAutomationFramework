@@ -16,6 +16,8 @@ import java.util.UUID;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
+import static support.TestSteps.step;
+import static support.TestSteps.validation;
 
 /** Sixteen user-service scenarios covering reads, validation and owned cleanup. */
 public final class UserServiceCoverageTest extends BaseApiTest {
@@ -26,10 +28,13 @@ public final class UserServiceCoverageTest extends BaseApiTest {
 
     @Test(groups = "service", dataProvider = "validPages")
     public void listsUsersWithValidPagination(String page, String pageSize) {
-        HttpResponse response = raw().get("/api/v1/users", RequestOptions.builder()
-                .queryParam("page", page).queryParam("pageSize", pageSize).build());
-        assertThat(response.statusCode(), is(200));
-        assertThat(RawApi.body(response), containsString("\"pagination\""));
+        HttpResponse response = step("List users with page " + page + " and page size " + pageSize,
+                () -> raw().get("/api/v1/users", RequestOptions.builder()
+                        .queryParam("page", page).queryParam("pageSize", pageSize).build()));
+        validation("The user list returns HTTP 200 with pagination", () -> {
+            assertThat(response.statusCode(), is(200));
+            assertThat(RawApi.body(response), containsString("\"pagination\""));
+        });
     }
 
     @DataProvider(name = "invalidPages")
@@ -39,9 +44,11 @@ public final class UserServiceCoverageTest extends BaseApiTest {
 
     @Test(groups = "service", dataProvider = "invalidPages")
     public void rejectsInvalidPagination(String page, String pageSize) {
-        HttpResponse response = raw().get("/api/v1/users", RequestOptions.builder()
-                .queryParam("page", page).queryParam("pageSize", pageSize).build());
-        assertThat(response.statusCode(), is(422));
+        HttpResponse response = step("List users with invalid pagination values",
+                () -> raw().get("/api/v1/users", RequestOptions.builder()
+                        .queryParam("page", page).queryParam("pageSize", pageSize).build()));
+        validation("Invalid pagination is rejected with HTTP 422",
+                () -> assertThat(response.statusCode(), is(422)));
     }
 
     @DataProvider(name = "missingIds")
@@ -49,7 +56,10 @@ public final class UserServiceCoverageTest extends BaseApiTest {
 
     @Test(groups = "service", dataProvider = "missingIds")
     public void returnsNotFoundForUnknownUser(long id) {
-        assertThat(raw().get("/api/v1/users/" + id).statusCode(), is(404));
+        HttpResponse response = step("Read unknown user " + id,
+                () -> raw().get("/api/v1/users/" + id));
+        validation("The unknown user returns HTTP 404",
+                () -> assertThat(response.statusCode(), is(404)));
     }
 
     @DataProvider(name = "invalidUsers")
@@ -67,7 +77,10 @@ public final class UserServiceCoverageTest extends BaseApiTest {
 
     @Test(groups = "service", dataProvider = "invalidUsers")
     public void rejectsInvalidUserPayload(String json) {
-        assertThat(raw().postJson("/api/v1/users", json).statusCode(), is(422));
+        HttpResponse response = step("Submit an invalid user payload",
+                () -> raw().postJson("/api/v1/users", json));
+        validation("The invalid user is rejected with HTTP 422",
+                () -> assertThat(response.statusCode(), is(422)));
     }
 
     @DataProvider(name = "validUsers")
@@ -77,15 +90,23 @@ public final class UserServiceCoverageTest extends BaseApiTest {
     public void createsReadsAndDeletesUser(String firstName, String lastName) {
         UserApi users = api();
         String email = ScenarioData.unique("user").replace("-", "") + "@example.com";
-        ApiResponse<CreateUserResponse> created = users.createUser(
-                new CreateUserRequest(firstName, lastName, email));
+        ApiResponse<CreateUserResponse> created = step("Create user " + email,
+                () -> users.createUser(new CreateUserRequest(firstName, lastName, email)));
         long id = created.body().getId();
         try {
-            assertThat(created.rawResponse().statusCode(), is(201));
-            assertThat(created.body().getEmail(), is(email));
-            assertThat(users.getUser(id).body().getFirstName(), is(firstName));
+            validation("The user is created with the supplied email", () -> {
+                assertThat(created.rawResponse().statusCode(), is(201));
+                assertThat(created.body().getEmail(), is(email));
+            });
+            ApiResponse<CreateUserResponse> fetched = step("Read the created user",
+                    () -> users.getUser(id));
+            validation("The stored user has the supplied first name",
+                    () -> assertThat(fetched.body().getFirstName(), is(firstName)));
         } finally {
-            assertThat(users.deleteUser(id).statusCode(), is(204));
+            HttpResponse deletion = step("Delete the created user",
+                    () -> users.deleteUser(id));
+            validation("User cleanup returns HTTP 204",
+                    () -> assertThat(deletion.statusCode(), is(204)));
         }
     }
 

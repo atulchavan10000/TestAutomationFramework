@@ -15,9 +15,6 @@
         </encoder>
     </appender>
 
-    <!-- Bodies use their own logger so consumers can later disable or reroute them. -->
-    <logger name="logging.bodies" level="INFO"/>
-
     <root level="INFO">
         <appender-ref ref="CONSOLE"/>
     </root>

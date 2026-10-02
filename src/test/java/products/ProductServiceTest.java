@@ -17,6 +17,8 @@ import java.util.UUID;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
+import static support.TestSteps.step;
+import static support.TestSteps.validation;
 
 /** Seventeen product-service scenarios for filtering, validation and lifecycle. */
 public final class ProductServiceTest extends BaseApiTest {
@@ -33,9 +35,12 @@ public final class ProductServiceTest extends BaseApiTest {
         RequestOptions.Builder options = RequestOptions.builder()
                 .queryParam("page", page).queryParam("pageSize", size);
         if (inStock != null) options.queryParam("inStock", inStock);
-        HttpResponse response = raw().get("/api/v1/products", options.build());
-        assertThat(response.statusCode(), is(200));
-        assertThat(RawApi.body(response), containsString("\"pagination\""));
+        HttpResponse response = step("List products with the selected filters",
+                () -> raw().get("/api/v1/products", options.build()));
+        validation("The product list returns HTTP 200 with pagination", () -> {
+            assertThat(response.statusCode(), is(200));
+            assertThat(RawApi.body(response), containsString("\"pagination\""));
+        });
     }
 
     @DataProvider(name = "invalidLists")
@@ -48,7 +53,10 @@ public final class ProductServiceTest extends BaseApiTest {
         RequestOptions.Builder options = RequestOptions.builder()
                 .queryParam("page", page).queryParam("pageSize", size);
         if (inStock != null) options.queryParam("inStock", inStock);
-        assertThat(raw().get("/api/v1/products", options.build()).statusCode(), is(422));
+        HttpResponse response = step("List products with invalid filters",
+                () -> raw().get("/api/v1/products", options.build()));
+        validation("Invalid product filters are rejected with HTTP 422",
+                () -> assertThat(response.statusCode(), is(422)));
     }
 
     @DataProvider(name = "missingProducts")
@@ -56,7 +64,10 @@ public final class ProductServiceTest extends BaseApiTest {
 
     @Test(groups = "service", dataProvider = "missingProducts")
     public void returnsNotFoundForUnknownProduct(long id) {
-        assertThat(raw().get("/api/v1/products/" + id).statusCode(), is(404));
+        HttpResponse response = step("Read unknown product " + id,
+                () -> raw().get("/api/v1/products/" + id));
+        validation("The unknown product returns HTTP 404",
+                () -> assertThat(response.statusCode(), is(404)));
     }
 
     @DataProvider(name = "invalidProducts")
@@ -72,7 +83,10 @@ public final class ProductServiceTest extends BaseApiTest {
 
     @Test(groups = "service", dataProvider = "invalidProducts")
     public void rejectsInvalidProduct(String json) {
-        assertThat(raw().postJson("/api/v1/products", json).statusCode(), is(422));
+        HttpResponse response = step("Submit an invalid product payload",
+                () -> raw().postJson("/api/v1/products", json));
+        validation("The invalid product is rejected with HTTP 422",
+                () -> assertThat(response.statusCode(), is(422)));
     }
 
     @DataProvider(name = "validProducts")
@@ -88,14 +102,23 @@ public final class ProductServiceTest extends BaseApiTest {
         ProductApi products = api();
         ProductRequest request = new ProductRequest(ScenarioData.unique("Jenkins product"), category,
                 new BigDecimal(price), "INR", stock, rating, "Owned by this test");
-        ApiResponse<ProductResponse> created = products.create(request);
+        ApiResponse<ProductResponse> created = step("Create a product owned by this test",
+                () -> products.create(request));
         long id = created.body().id();
         try {
-            assertThat(created.rawResponse().statusCode(), is(201));
-            assertThat(created.body().price(), comparesEqualTo(new BigDecimal(price)));
-            assertThat(products.get(id).body().stock(), is(stock));
+            validation("The product is created with the supplied price", () -> {
+                assertThat(created.rawResponse().statusCode(), is(201));
+                assertThat(created.body().price(), comparesEqualTo(new BigDecimal(price)));
+            });
+            ApiResponse<ProductResponse> fetched = step("Read the created product",
+                    () -> products.get(id));
+            validation("The stored product has the supplied stock",
+                    () -> assertThat(fetched.body().stock(), is(stock)));
         } finally {
-            assertThat(products.delete(id).statusCode(), is(204));
+            HttpResponse deletion = step("Delete the created product",
+                    () -> products.delete(id));
+            validation("Product cleanup returns HTTP 204",
+                    () -> assertThat(deletion.statusCode(), is(204)));
         }
     }
 

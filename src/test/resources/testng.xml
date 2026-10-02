@@ -6,6 +6,7 @@
     <listeners>
         <listener class-name="support.SuiteConfigListener"/>
         <listener class-name="support.DestructiveTestGuard"/>
+        <listener class-name="support.TestLifecycleLogger"/>
     </listeners>
 
     <test name="Jenkins API suite">
@@ -18,7 +19,7 @@
             <class name="orders.OrderServiceTest"/>
             <class name="payments.PaymentServiceTest"/>
             <class name="testsupport.TestSupportServiceTest"/>
-            <class name="gateway.GatewayServiceTest"/>
+           <class name="gateway.GatewayServiceTest"/>
             <class name="endtoend.CheckoutJourneyTest"/>
         </classes>
     </test>

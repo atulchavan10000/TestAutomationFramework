@@ -25,6 +25,8 @@ import java.util.UUID;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
+import static support.TestSteps.step;
+import static support.TestSteps.validation;
 
 /** Eleven payment-service scenarios including validation and idempotency. */
 public final class PaymentServiceTest extends BaseApiTest {
@@ -33,8 +35,11 @@ public final class PaymentServiceTest extends BaseApiTest {
 
     @Test(groups = "service", dataProvider = "authCases")
     public void rejectsMissingAuthentication(String operation) {
-        assertThat(callProtected(operation, RequestOptions.builder()
-                .header("Idempotency-Key", UUID.randomUUID().toString()).build()).statusCode(), is(401));
+        HttpResponse response = step("Call protected payment operation without authentication",
+                () -> callProtected(operation, RequestOptions.builder()
+                        .header("Idempotency-Key", UUID.randomUUID().toString()).build()));
+        validation("Missing authentication is rejected with HTTP 401",
+                () -> assertThat(response.statusCode(), is(401)));
     }
 
     @Test(groups = "service", dataProvider = "authCases")
@@ -42,7 +47,10 @@ public final class PaymentServiceTest extends BaseApiTest {
         RequestOptions options = RequestOptions.builder()
                 .header("Authorization", "Bearer invalid.jwt.token")
                 .header("Idempotency-Key", UUID.randomUUID().toString()).build();
-        assertThat(callProtected(operation, options).statusCode(), is(401));
+        HttpResponse response = step("Call protected payment operation with an invalid token",
+                () -> callProtected(operation, options));
+        validation("Invalid authentication is rejected with HTTP 401",
+                () -> assertThat(response.statusCode(), is(401)));
     }
 
     @DataProvider(name = "invalidPayments")
@@ -57,10 +65,14 @@ public final class PaymentServiceTest extends BaseApiTest {
 
     @Test(groups = "service", dataProvider = "invalidPayments")
     public void rejectsInvalidPaymentPayload(String json, boolean includeIdempotencyKey) {
+        String token = step("Authenticate the payment test user", this::token);
         RequestOptions.Builder options = RequestOptions.builder()
-                .header("Authorization", "Bearer " + token());
+                .header("Authorization", "Bearer " + token);
         if (includeIdempotencyKey) options.header("Idempotency-Key", UUID.randomUUID().toString());
-        assertThat(raw().postJson("/api/v1/payments", json, options.build()).statusCode(), is(422));
+        HttpResponse response = step("Submit an invalid payment payload",
+                () -> raw().postJson("/api/v1/payments", json, options.build()));
+        validation("The invalid payment is rejected with HTTP 422",
+                () -> assertThat(response.statusCode(), is(422)));
     }
 
     @DataProvider(name = "missingPaymentIds")
@@ -68,7 +80,11 @@ public final class PaymentServiceTest extends BaseApiTest {
 
     @Test(groups = "service", dataProvider = "missingPaymentIds")
     public void returnsNotFoundForUnknownPayment(long id) {
-        assertThat(raw().get("/api/v1/payments/" + id, ScenarioData.bearer(token())).statusCode(), is(404));
+        String token = step("Authenticate the payment test user", this::token);
+        HttpResponse response = step("Read unknown payment " + id,
+                () -> raw().get("/api/v1/payments/" + id, ScenarioData.bearer(token)));
+        validation("The unknown payment returns HTTP 404",
+                () -> assertThat(response.statusCode(), is(404)));
     }
 
     @DataProvider(name = "paymentQuantities")
@@ -80,21 +96,33 @@ public final class PaymentServiceTest extends BaseApiTest {
         ProductApi products = new ProductApi(client("product-service", context));
         OrderApi orders = new OrderApi(client("order-service", context));
         PaymentApi payments = new PaymentApi(client("payment-service", context));
-        String token = token();
-        long productId = products.create(new ProductRequest(ScenarioData.unique("Payment product"), "TEST",
-                new BigDecimal("10.00"), "INR", quantity, 4.0, null)).body().id();
+        String token = step("Authenticate the payment test user", this::token);
+        long productId = step("Create a product for the payment scenario",
+                () -> products.create(new ProductRequest(ScenarioData.unique("Payment product"), "TEST",
+                        new BigDecimal("10.00"), "INR", quantity, 4.0, null)).body().id());
         try {
-            OrderResponse order = orders.create(new CreateOrderRequest(
-                    List.of(new OrderItemRequest(productId, quantity))), token).body();
+            OrderResponse order = step("Create an order for payment",
+                    () -> orders.create(new CreateOrderRequest(
+                            List.of(new OrderItemRequest(productId, quantity))), token).body());
             String key = UUID.randomUUID().toString();
             PaymentRequest request = new PaymentRequest(order.id(), order.totalAmount(), order.currency(), "CARD");
-            ApiResponse<PaymentResponse> first = payments.pay(request, token, key);
-            ApiResponse<PaymentResponse> repeated = payments.pay(request, token, key);
-            assertThat(first.rawResponse().statusCode(), is(201));
-            assertThat(repeated.body().id(), is(first.body().id()));
-            assertThat(orders.get(order.id(), token).body().status(), is("CONFIRMED"));
+            ApiResponse<PaymentResponse> first = step("Submit the original payment",
+                    () -> payments.pay(request, token, key));
+            ApiResponse<PaymentResponse> repeated = step("Replay the same idempotent payment",
+                    () -> payments.pay(request, token, key));
+            validation("The replay returns the original successful payment", () -> {
+                assertThat(first.rawResponse().statusCode(), is(201));
+                assertThat(repeated.body().id(), is(first.body().id()));
+            });
+            OrderResponse confirmed = step("Read the order after payment",
+                    () -> orders.get(order.id(), token).body());
+            validation("The paid order is confirmed",
+                    () -> assertThat(confirmed.status(), is("CONFIRMED")));
         } finally {
-            assertThat(products.delete(productId).statusCode(), is(204));
+            HttpResponse deletion = step("Delete the payment product fixture",
+                    () -> products.delete(productId));
+            validation("Product cleanup returns HTTP 204",
+                    () -> assertThat(deletion.statusCode(), is(204)));
         }
     }
 

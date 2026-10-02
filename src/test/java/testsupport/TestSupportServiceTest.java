@@ -11,6 +11,8 @@ import java.util.UUID;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
+import static support.TestSteps.step;
+import static support.TestSteps.validation;
 
 /** Ten deterministic transport scenarios supplied specifically for framework consumers. */
 public final class TestSupportServiceTest extends BaseApiTest {
@@ -21,7 +23,10 @@ public final class TestSupportServiceTest extends BaseApiTest {
 
     @Test(groups = "service", dataProvider = "statuses")
     public void returnsRequestedSupportedStatus(int status) {
-        assertThat(raw().get("/api/v1/test/status/" + status).statusCode(), is(status));
+        HttpResponse response = step("Request the deterministic HTTP " + status + " response",
+                () -> raw().get("/api/v1/test/status/" + status));
+        validation("The service returns HTTP " + status,
+                () -> assertThat(response.statusCode(), is(status)));
     }
 
     @DataProvider(name = "delays")
@@ -29,16 +34,22 @@ public final class TestSupportServiceTest extends BaseApiTest {
 
     @Test(groups = "service", dataProvider = "delays")
     public void returnsAfterRequestedDelay(int milliseconds) {
-        HttpResponse response = raw().get("/api/v1/test/delay/" + milliseconds);
-        assertThat(response.statusCode(), is(200));
-        assertThat(RawApi.body(response), containsString("\"delayMilliseconds\":" + milliseconds));
+        HttpResponse response = step("Request a " + milliseconds + " ms deterministic delay",
+                () -> raw().get("/api/v1/test/delay/" + milliseconds));
+        validation("The response confirms the requested delay", () -> {
+            assertThat(response.statusCode(), is(200));
+            assertThat(RawApi.body(response), containsString("\"delayMilliseconds\":" + milliseconds));
+        });
     }
 
     @Test(groups = "service")
     public void returnsAnEmptyNoContentResponse() {
-        HttpResponse response = raw().get("/api/v1/test/empty");
-        assertThat(response.statusCode(), is(204));
-        assertThat(response.bodyLength(), is(0));
+        HttpResponse response = step("Request an empty response",
+                () -> raw().get("/api/v1/test/empty"));
+        validation("The response is HTTP 204 with no body", () -> {
+            assertThat(response.statusCode(), is(204));
+            assertThat(response.bodyLength(), is(0));
+        });
     }
 
     private RawApi raw() {

@@ -23,6 +23,8 @@ import java.util.UUID;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
+import static support.TestSteps.step;
+import static support.TestSteps.validation;
 
 /** Thirteen order-service scenarios including authorization and stock reservation. */
 public final class OrderServiceTest extends BaseApiTest {
@@ -34,12 +36,18 @@ public final class OrderServiceTest extends BaseApiTest {
 
     @Test(groups = "service", dataProvider = "protectedOperations")
     public void rejectsMissingAuthentication(String operation, String path) {
-        assertThat(callProtected(operation, path, RequestOptions.empty()).statusCode(), is(401));
+        HttpResponse response = step("Call protected order operation without authentication",
+                () -> callProtected(operation, path, RequestOptions.empty()));
+        validation("Missing authentication is rejected with HTTP 401",
+                () -> assertThat(response.statusCode(), is(401)));
     }
 
     @Test(groups = "service", dataProvider = "protectedOperations")
     public void rejectsInvalidAuthentication(String operation, String path) {
-        assertThat(callProtected(operation, path, ScenarioData.bearer("invalid.jwt.token")).statusCode(), is(401));
+        HttpResponse response = step("Call protected order operation with an invalid token",
+                () -> callProtected(operation, path, ScenarioData.bearer("invalid.jwt.token")));
+        validation("Invalid authentication is rejected with HTTP 401",
+                () -> assertThat(response.statusCode(), is(401)));
     }
 
     @DataProvider(name = "invalidOrders")
@@ -53,7 +61,11 @@ public final class OrderServiceTest extends BaseApiTest {
 
     @Test(groups = "service", dataProvider = "invalidOrders")
     public void rejectsInvalidOrderPayload(String json) {
-        assertThat(raw().postJson("/api/v1/orders", json, ScenarioData.bearer(token())).statusCode(), is(422));
+        String token = step("Authenticate the order test user", this::token);
+        HttpResponse response = step("Submit an invalid order payload",
+                () -> raw().postJson("/api/v1/orders", json, ScenarioData.bearer(token)));
+        validation("The invalid order is rejected with HTTP 422",
+                () -> assertThat(response.statusCode(), is(422)));
     }
 
     @DataProvider(name = "missingProductIds")
@@ -62,7 +74,11 @@ public final class OrderServiceTest extends BaseApiTest {
     @Test(groups = "service", dataProvider = "missingProductIds")
     public void rejectsOrderForMissingProduct(long productId) {
         String json = "{\"items\":[{\"productId\":" + productId + ",\"quantity\":1}]}";
-        assertThat(raw().postJson("/api/v1/orders", json, ScenarioData.bearer(token())).statusCode(), is(404));
+        String token = step("Authenticate the order test user", this::token);
+        HttpResponse response = step("Create an order for missing product " + productId,
+                () -> raw().postJson("/api/v1/orders", json, ScenarioData.bearer(token)));
+        validation("The missing product causes HTTP 404",
+                () -> assertThat(response.statusCode(), is(404)));
     }
 
     @DataProvider(name = "quantities")
@@ -73,18 +89,29 @@ public final class OrderServiceTest extends BaseApiTest {
         TestContext context = new TestContext(UUID.randomUUID().toString());
         ProductApi products = new ProductApi(client("product-service", context));
         OrderApi orders = new OrderApi(client("order-service", context));
-        long productId = products.create(new ProductRequest(ScenarioData.unique("Order product"), "TEST",
-                new BigDecimal("25.00"), "INR", quantity + 2, 4.0, null)).body().id();
+        long productId = step("Create a product with reservable stock",
+                () -> products.create(new ProductRequest(ScenarioData.unique("Order product"), "TEST",
+                        new BigDecimal("25.00"), "INR", quantity + 2, 4.0, null)).body().id());
         try {
-            ApiResponse<OrderResponse> result = orders.create(
-                    new CreateOrderRequest(List.of(new OrderItemRequest(productId, quantity))), token());
-            assertThat(result.rawResponse().statusCode(), is(201));
-            assertThat(result.body().status(), is("PENDING_PAYMENT"));
-            assertThat(result.body().totalAmount(), comparesEqualTo(new BigDecimal("25.00").multiply(BigDecimal.valueOf(quantity))));
-            ProductResponse remaining = products.get(productId).body();
-            assertThat(remaining.stock(), is(2));
+            String token = step("Authenticate the order test user", this::token);
+            ApiResponse<OrderResponse> result = step("Create a pending order and reserve stock",
+                    () -> orders.create(new CreateOrderRequest(
+                            List.of(new OrderItemRequest(productId, quantity))), token));
+            validation("The order is pending payment with the expected total", () -> {
+                assertThat(result.rawResponse().statusCode(), is(201));
+                assertThat(result.body().status(), is("PENDING_PAYMENT"));
+                assertThat(result.body().totalAmount(), comparesEqualTo(
+                        new BigDecimal("25.00").multiply(BigDecimal.valueOf(quantity))));
+            });
+            ProductResponse remaining = step("Read product stock after reservation",
+                    () -> products.get(productId).body());
+            validation("The requested quantity was reserved",
+                    () -> assertThat(remaining.stock(), is(2)));
         } finally {
-            assertThat(products.delete(productId).statusCode(), is(204));
+            HttpResponse deletion = step("Delete the order product fixture",
+                    () -> products.delete(productId));
+            validation("Product cleanup returns HTTP 204",
+                    () -> assertThat(deletion.statusCode(), is(204)));
         }
     }
 
