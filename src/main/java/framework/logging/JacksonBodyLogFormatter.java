@@ -18,11 +18,14 @@ public final class JacksonBodyLogFormatter implements BodyLogFormatter {
             .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).build();
     private final int maxInputBytes, maxOutputChars;
     private final SensitiveDataRedactor redactor;
+
+    /** Creates a formatter with explicit input/output limits and sensitive field names. */
     public JacksonBodyLogFormatter(int maxInputBytes, int maxOutputChars, Set<String> redactedFields) {
         if (maxInputBytes < 1 || maxOutputChars < 1) throw new IllegalArgumentException("Limits must be positive");
         this.maxInputBytes = maxInputBytes; this.maxOutputChars = maxOutputChars;
         this.redactor = new SensitiveDataRedactor(redactedFields);
     }
+    /** Uses the shared redaction policy and default output limits. */
     public static JacksonBodyLogFormatter defaults() {
         return defaults(8000);
     }
@@ -62,6 +65,7 @@ public final class JacksonBodyLogFormatter implements BodyLogFormatter {
             return "<body omitted: parsing, charset, or redaction failed>";
         }
     }
+    /** Recursively replaces configured sensitive JSON fields before rendering. */
     private void redact(JsonNode node) {
         if (node.isObject()) {
             ObjectNode object = (ObjectNode) node;

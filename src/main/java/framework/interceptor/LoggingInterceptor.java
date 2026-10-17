@@ -147,6 +147,7 @@ public final class LoggingInterceptor implements HttpInterceptor {
         return response;
     }
 
+    /** Formats request evidence only when a body formatter was explicitly enabled. */
     private String formatRequestBody(HttpRequest request) {
         if (!request.hasBody()) {
             return "<none>";
@@ -158,6 +159,7 @@ public final class LoggingInterceptor implements HttpInterceptor {
                 request.body(), request.headers().firstValue("Content-Type").orElse(null));
     }
 
+    /** Formats response evidence only when content exists and body logging is enabled. */
     private String formatResponseBody(HttpResponse response) {
         if (response.bodyLength() == 0) {
             return "<none>";
@@ -168,20 +170,23 @@ public final class LoggingInterceptor implements HttpInterceptor {
         return bodyFormatter.format(response.body(), response.contentType().orElse(null));
     }
 
+    /** Reads the current test name placed in MDC by the TestNG lifecycle listener. */
     private static String currentTestCase() {
         return mdcValue("testCase", "<not available>");
     }
 
+    /** Reads the current business step placed in MDC by the test-step helper. */
     private static String currentStep() {
         return mdcValue("testStep", "<not specified>");
     }
 
+    /** Returns a sanitized MDC value or a stable fallback outside a test/step scope. */
     private static String mdcValue(String key, String fallback) {
         String value = MDC.get(key);
         return value == null ? fallback : singleLine(value);
     }
 
-    /** Keeps caller-supplied IDs from inserting new lines into a summary log event. */
+    /** Keeps caller-supplied metadata from forging additional log lines. */
     private static String singleLine(String value) {
         return value.replace("\r", "\\r").replace("\n", "\\n").replace("\t", "\\t");
     }

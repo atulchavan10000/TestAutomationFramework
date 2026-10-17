@@ -12,39 +12,45 @@ public final class ServiceConfig {
     private final String name;
     private final URI baseUri;
     private final Duration timeout;
-    private final AuthenticationScheme authenticationScheme;
+    // null means this service sends no authentication unless an operation/request selects a profile.
+    private final String defaultAuthenticationProfile;
 
+    /** Creates one environment-resolved service configuration. */
     public ServiceConfig(
             String name,
             URI baseUri,
             Duration timeout,
-            AuthenticationScheme authenticationScheme) {
+            String defaultAuthenticationProfile) {
 
         this.name = requireText(name, "Service name");
         this.baseUri = validateBaseUri(baseUri);
         this.timeout = Objects.requireNonNull(timeout, "Service timeout must not be null");
-        this.authenticationScheme = Objects.requireNonNull(
-                authenticationScheme, "Authentication scheme must not be null");
+        this.defaultAuthenticationProfile = defaultAuthenticationProfile == null
+                ? null : requireText(defaultAuthenticationProfile, "Default authentication profile");
 
         if (timeout.isZero() || timeout.isNegative()) {
             throw new IllegalArgumentException("Service timeout must be positive");
         }
     }
 
+    /** Returns the logical service-catalog name. */
     public String name() {
         return name;
     }
 
+    /** Returns the selected environment's validated HTTP base URI. */
     public URI baseUri() {
         return baseUri;
     }
 
+    /** Returns the effective timeout after defaults and overrides are applied. */
     public Duration timeout() {
         return timeout;
     }
 
-    public AuthenticationScheme authenticationScheme() {
-        return authenticationScheme;
+    /** Returns the service default profile, or empty when authentication is opt-in. */
+    public java.util.Optional<String> defaultAuthenticationProfile() {
+        return java.util.Optional.ofNullable(defaultAuthenticationProfile);
     }
 
     /**
@@ -65,6 +71,7 @@ public final class ServiceConfig {
         return uri;
     }
 
+    /** Shared constructor guard for required service names and profile references. */
     private static String requireText(String value, String label) {
         Objects.requireNonNull(value, label + " must not be null");
         if (value.isBlank()) {

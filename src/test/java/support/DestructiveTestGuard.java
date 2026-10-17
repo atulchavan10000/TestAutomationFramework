@@ -17,8 +17,10 @@ import java.util.Arrays;
  * suite-level component consistently decides whether that work is permitted.
  */
 public final class DestructiveTestGuard implements IInvokedMethodListener {
+    /** TestNG group used to mark calls that can mutate durable service state. */
     public static final String DESTRUCTIVE_GROUP = "destructive";
 
+    /** Skips a destructive test before its body runs when environment policy forbids it. */
     @Override
     public void beforeInvocation(IInvokedMethod invokedMethod, ITestResult testResult) {
         // TestNG also invokes this listener for @Before... and @After... methods.
@@ -40,11 +42,13 @@ public final class DestructiveTestGuard implements IInvokedMethodListener {
         }
     }
 
+    /** Checks the resolved TestNG groups attached to the current test method. */
     private static boolean isDestructive(IInvokedMethod invokedMethod) {
         return Arrays.asList(invokedMethod.getTestMethod().getGroups())
                 .contains(DESTRUCTIVE_GROUP);
     }
 
+    /** Retrieves required suite configuration and distinguishes setup failure from policy skip. */
     private static FrameworkConfig suiteConfiguration(ISuite suite) {
         Object value = suite.getAttribute(SuiteConfigListener.CONFIG_ATTRIBUTE);
         if (!(value instanceof FrameworkConfig config)) {

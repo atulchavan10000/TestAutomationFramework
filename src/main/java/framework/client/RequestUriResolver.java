@@ -15,6 +15,7 @@ public final class RequestUriResolver {
     private static final Pattern PLACEHOLDER = Pattern.compile("\\{([^{}]+)}");
     private final URI base;
 
+    /** Validates and stores the service base URI used for every operation path. */
     public RequestUriResolver(URI base) {
         this.base = Objects.requireNonNull(base);
         if (!("http".equalsIgnoreCase(base.getScheme()) || "https".equalsIgnoreCase(base.getScheme()))
@@ -24,6 +25,7 @@ public final class RequestUriResolver {
         }
     }
 
+    /** Resolves placeholders and query values into one encoded absolute request URI. */
     public URI resolve(String path, RequestOptions options) {
         Objects.requireNonNull(path);
         Objects.requireNonNull(options);
@@ -64,7 +66,7 @@ public final class RequestUriResolver {
         return URI.create(result.toASCIIString());
     }
 
-    /** Percent-encode UTF-8 data using RFC 3986 unreserved characters, not form '+' encoding. */
+    /** Percent-encodes UTF-8 data using RFC 3986 unreserved characters, not form {@code +} encoding. */
     private static String encode(String value) {
         StringBuilder result = new StringBuilder();
         for (byte b : value.getBytes(StandardCharsets.UTF_8)) {

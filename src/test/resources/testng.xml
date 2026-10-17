@@ -3,6 +3,13 @@
     <!-- Local runs use QA. TestNG lets -Denvironment=int override this value. -->
     <parameter name="environment" value="qa"/>
 
+    <!--
+      Authentication secrets are deliberately supplied through the process environment,
+      never as TestNG parameters. Local and Jenkins runs require:
+      TAF_SECRET_CHECKOUT_USER_PASSWORD, TAF_SECRET_OAUTH_CLIENT_SECRET,
+      and TAF_SECRET_TEST_API_KEY.
+    -->
+
     <listeners>
         <listener class-name="support.SuiteConfigListener"/>
         <listener class-name="support.DestructiveTestGuard"/>
@@ -10,7 +17,7 @@
     </listeners>
 
     <test name="Jenkins API suite">
-        <!-- These classes produce exactly 100 TestNG invocations through their data providers. -->
+        <!-- These classes produce exactly 104 TestNG invocations through their data providers. -->
         <classes>
             <class name="health.ServiceHealthTest"/>
             <class name="users.UserServiceCoverageTest"/>
@@ -19,7 +26,7 @@
             <class name="orders.OrderServiceTest"/>
             <class name="payments.PaymentServiceTest"/>
             <class name="testsupport.TestSupportServiceTest"/>
-           <class name="gateway.GatewayServiceTest"/>
+            <class name="gateway.GatewayServiceTest"/>
             <class name="endtoend.CheckoutJourneyTest"/>
         </classes>
     </test>

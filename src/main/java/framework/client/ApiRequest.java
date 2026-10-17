@@ -19,8 +19,8 @@ import java.util.Objects;
  * );
  *
  * The response type is intentionally separate:
- * ApiResponse<CreateUserResponse> result =
- *     apiClient.execute(request, CreateUserResponse.class);
+ * {@code ApiResponse<CreateUserResponse> result =}
+ * {@code     apiClient.execute(request, CreateUserResponse.class);}
  *
  * A normal body is serialized through JsonCodec. RawBody explicitly carries
  * prepared bytes that bypass serialization. Strings are ordinary JSON strings,
@@ -32,6 +32,7 @@ public final class ApiRequest {
     private final String path;
     private final Object body;
     private final RequestOptions options;
+    private final String operationAuthenticationProfile;
 
     /**
      * Creates an operation description with explicit request options.
@@ -42,6 +43,12 @@ public final class ApiRequest {
      * @param options caller-supplied options; use RequestOptions.empty() for none
      */
     public ApiRequest(HttpMethod method, String path, Object body, RequestOptions options) {
+        this(method, path, body, options, null);
+    }
+
+    /** Lets an API operation select a stable named profile without exposing it to ordinary tests. */
+    public ApiRequest(HttpMethod method, String path, Object body, RequestOptions options,
+            String operationAuthenticationProfile) {
         this.method = Objects.requireNonNull(method, "HTTP method must not be null");
         this.path = Objects.requireNonNull(path, "Operation path must not be null");
         if (path.trim().isEmpty()) {
@@ -52,6 +59,10 @@ public final class ApiRequest {
         // To explicitly send JSON null, use RawBody.json("null").
         this.body = body;
         this.options = Objects.requireNonNull(options, "Request options must not be null");
+        if (operationAuthenticationProfile != null && operationAuthenticationProfile.isBlank()) {
+            throw new IllegalArgumentException("Operation authentication profile must not be blank");
+        }
+        this.operationAuthenticationProfile = operationAuthenticationProfile;
     }
 
     /** Convenience constructor for calls without request-specific overrides. */
@@ -96,4 +107,7 @@ public final class ApiRequest {
     public RequestOptions options() {
         return options;
     }
+
+    /** Returns the profile chosen by the API operation, or null so the service default can apply. */
+    public String operationAuthenticationProfile() { return operationAuthenticationProfile; }
 }

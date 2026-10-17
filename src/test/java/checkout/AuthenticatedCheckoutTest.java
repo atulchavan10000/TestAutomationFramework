@@ -1,7 +1,5 @@
 package checkout;
 
-import authentication.AuthApi;
-import authentication.model.LoginResponse;
 import framework.client.ApiResponse;
 import framework.context.TestContext;
 import orders.OrderApi;
@@ -32,19 +30,9 @@ public final class AuthenticatedCheckoutTest extends BaseApiTest {
     public void authenticatedUserPaysForAndConfirmsOrder() {
         // Sharing one test-scoped context gives every call the same correlation ID.
         TestContext context = new TestContext(UUID.randomUUID().toString());
-        AuthApi auth = new AuthApi(client("auth-service", context));
         ProductApi products = new ProductApi(client("product-service", context));
         OrderApi orders = new OrderApi(client("order-service", context));
         PaymentApi payments = new PaymentApi(client("payment-service", context));
-
-        ApiResponse<LoginResponse> loginResult = step("Authenticate the checkout user",
-                () -> auth.login("user1", "Password123!"));
-        String token = loginResult.body().accessToken();
-        validation("Authentication returns a usable access token", () -> {
-            assertThat(loginResult.rawResponse().statusCode(), is(200));
-            assertThat(token, notNullValue());
-            assertThat(token.isBlank(), is(false));
-        });
 
         long productId = 0;
         try {
@@ -65,7 +53,7 @@ public final class AuthenticatedCheckoutTest extends BaseApiTest {
             long createdProductId = productId;
             ApiResponse<OrderResponse> orderResult = step("Create an order and reserve product stock",
                     () -> orders.create(new CreateOrderRequest(
-                            List.of(new OrderItemRequest(createdProductId, 2))), token));
+                            List.of(new OrderItemRequest(createdProductId, 2)))));
             OrderResponse pending = orderResult.body();
             validation("The order is pending payment with the expected total", () -> {
                 assertThat(orderResult.rawResponse().statusCode(), is(201));
@@ -76,7 +64,6 @@ public final class AuthenticatedCheckoutTest extends BaseApiTest {
             ApiResponse<PaymentResponse> paymentResult = step("Pay for the pending order",
                     () -> payments.pay(
                             new PaymentRequest(pending.id(), pending.totalAmount(), pending.currency(), "CARD"),
-                            token,
                             UUID.randomUUID().toString()));
             validation("The payment succeeds for the pending order", () -> {
                 assertThat(paymentResult.rawResponse().statusCode(), is(201));
@@ -85,7 +72,7 @@ public final class AuthenticatedCheckoutTest extends BaseApiTest {
             });
 
             ApiResponse<OrderResponse> confirmedResult = step("Read the order after payment",
-                    () -> orders.get(pending.id(), token));
+                    () -> orders.get(pending.id()));
             validation("The order is confirmed and references the payment", () -> {
                 assertThat(confirmedResult.rawResponse().statusCode(), is(200));
                 assertThat(confirmedResult.body().status(), is("CONFIRMED"));

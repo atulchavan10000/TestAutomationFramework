@@ -10,6 +10,7 @@ public final class TestLifecycleLogger implements ITestListener {
     private static final Logger LOG = LoggerFactory.getLogger("test.lifecycle");
     private static final String DIVIDER = "=".repeat(96);
 
+    /** Initializes per-thread step state and writes the invocation start banner. */
     @Override
     public void onTestStart(ITestResult result) {
         String name = testCaseName(result);
@@ -21,21 +22,25 @@ public final class TestLifecycleLogger implements ITestListener {
                 DIVIDER);
     }
 
+    /** Writes a successful terminal result and clears invocation-scoped logging state. */
     @Override
     public void onTestSuccess(ITestResult result) {
         finish(result, "PASSED");
     }
 
+    /** Writes a failed terminal result, including its reason, and clears logging state. */
     @Override
     public void onTestFailure(ITestResult result) {
         finish(result, "FAILED");
     }
 
+    /** Writes a skipped terminal result and clears invocation-scoped logging state. */
     @Override
     public void onTestSkipped(ITestResult result) {
         finish(result, "SKIPPED");
     }
 
+    /** Writes the terminal banner and always clears state from the reusable worker thread. */
     private static void finish(ITestResult result, String status) {
         String name = testCaseName(result);
         long elapsedMillis = Math.max(0, result.getEndMillis() - result.getStartMillis());
@@ -54,11 +59,13 @@ public final class TestLifecycleLogger implements ITestListener {
         }
     }
 
+    /** Builds a stable class-and-method identifier for logs and MDC. */
     private static String testCaseName(ITestResult result) {
         return result.getMethod().getRealClass().getSimpleName()
                 + "." + result.getMethod().getMethodName();
     }
 
+    /** Converts nullable failure text into a safe single-line diagnostic value. */
     private static String singleLine(String value) {
         if (value == null) {
             return "<no message>";

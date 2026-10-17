@@ -20,8 +20,8 @@ public interface InterceptorChain {
      * This is a synchronous call: it returns after downstream work completes.
      * Responses return through the same calls in reverse order:
      *
-     * Request:  A -> B -> HttpClient
-     * Response: A <- B <- HttpClient
+     * {@code Request:  A -> B -> HttpClient}
+     * {@code Response: A <- B <- HttpClient}
      *
      * Transport or downstream failures propagate as exceptions unless explicitly
      * handled. Do not replace a failure with null or a fabricated HTTP status.

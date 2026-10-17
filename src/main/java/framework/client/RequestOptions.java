@@ -1,5 +1,6 @@
 package framework.client;
 
+import framework.authentication.AuthenticationSelection;
 import framework.http.HttpHeaders;
 
 import java.time.Duration;
@@ -39,6 +40,7 @@ public final class RequestOptions {
     // null internally means the caller did not override the configured timeout.
     // That is different from choosing zero or an unlimited timeout.
     private final Duration timeout;
+    private final AuthenticationSelection authentication;
 
     /** Takes independent immutable snapshots of the builder's mutable collections. */
     private RequestOptions(Builder builder) {
@@ -57,12 +59,16 @@ public final class RequestOptions {
 
         // Duration is immutable; sharing it is safe.
         this.timeout = builder.timeout;
+        this.authentication = builder.authentication;
     }
 
     /** Creates a fresh builder. Keep each builder local to its caller. */
     public static Builder builder() {
         return new Builder();
     }
+
+    /** Creates a mutable copy so an API object can add operation-owned values such as path parameters. */
+    public Builder toBuilder() { return new Builder(this); }
 
     /** Represents a call with no explicit overrides; defaults still apply later. */
     public static RequestOptions empty() {
@@ -76,7 +82,7 @@ public final class RequestOptions {
 
     /**
      * Returns immutable query names and ordered values per name.
-     * Several values can represent tag=active&tag=verified. Names retain their
+     * Several values can represent {@code tag=active&tag=verified}. Names retain their
      * casing; unlike HTTP header names, we do not normalize parameter names.
      * Names and values are unencoded; URI preparation must encode them later.
      */
@@ -98,15 +104,30 @@ public final class RequestOptions {
         return Optional.ofNullable(timeout);
     }
 
+    /** Explicit request-level authentication choice; INHERIT is the normal default. */
+    public AuthenticationSelection authentication() { return authentication; }
+
     /** Mutable construction helper. static/final do not make this builder thread-safe. */
     public static final class Builder {
 
-        private final HttpHeaders.Builder headers = HttpHeaders.builder();
+        private final HttpHeaders.Builder headers;
         private final Map<String, List<String>> queryParameters = new LinkedHashMap<>();
         private final Map<String, String> pathParameters = new LinkedHashMap<>();
         private Duration timeout;
+        private AuthenticationSelection authentication = AuthenticationSelection.inherit();
 
-        private Builder() {}
+        /** Starts with empty headers, parameters, and inherited authentication. */
+        private Builder() { this.headers = HttpHeaders.builder(); }
+
+        /** Creates a mutable copy used for safe incremental option changes. */
+        private Builder(RequestOptions source) {
+            this.headers = source.headers.toBuilder();
+            source.queryParameters.forEach((name, values) ->
+                    this.queryParameters.put(name, new ArrayList<>(values)));
+            this.pathParameters.putAll(source.pathParameters);
+            this.timeout = source.timeout;
+            this.authentication = source.authentication;
+        }
 
         /** Replaces all values for a header name, matching names case-insensitively. */
         public Builder header(String name, String value) {
@@ -158,6 +179,18 @@ public final class RequestOptions {
                 throw new IllegalArgumentException("Timeout must be positive");
             }
             this.timeout = timeout;
+            return this;
+        }
+
+        /** Selects a named profile for an auth-specific operation or test. */
+        public Builder authenticationProfile(String profile) {
+            this.authentication = AuthenticationSelection.profile(profile);
+            return this;
+        }
+
+        /** Deliberately suppresses operation and service authentication defaults. */
+        public Builder disableAuthentication() {
+            this.authentication = AuthenticationSelection.disabled();
             return this;
         }
 

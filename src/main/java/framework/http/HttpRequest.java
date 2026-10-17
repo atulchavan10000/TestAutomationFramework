@@ -36,7 +36,7 @@ public final class HttpRequest {
 
     private final Duration timeout;
 
-    /** Validates required settings and takes a snapshot of the builder's data. */
+    /** Validates required settings and takes defensive copies of mutable builder data. */
     private HttpRequest(Builder builder) {
         this.method = Objects.requireNonNull(builder.method, "HTTP method is required");
         this.uri = Objects.requireNonNull(builder.uri, "Request URI is required");
@@ -136,9 +136,10 @@ public final class HttpRequest {
         private byte[] body;
         private Duration timeout;
 
+        /** Instances are created through {@link HttpRequest#builder()}. */
         private Builder() {}
 
-        /** Shares immutable objects, but copies the mutable byte array. */
+        /** Shares immutable objects but copies the mutable body for interceptor modifications. */
         private Builder(HttpRequest source) {
             this.method = source.method;
             this.uri = source.uri;

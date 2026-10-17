@@ -505,14 +505,15 @@ configuration, unknown keys fail, missing selected environments/services fail cl
 change declared scalar values but may not create undeclared services. The consumer supplies the catalog as a test
 runtime resource; the framework remains independent of the product-specific file contents.
 
-### Configuration implementation status — 2026-09-26
+### Historical configuration implementation status — 2026-09-26 (superseded)
 
-The first configuration slice is implemented under `framework.config`: `ConfigLoader`, `FrameworkConfig`,
-`ServiceConfig`, `AuthenticationScheme`, and `ConfigException`. The consumer catalog is
+The first configuration slice used `ConfigLoader`, `FrameworkConfig`, `ServiceConfig`, a coarse authentication
+scheme enum, and `ConfigException`. The authentication implementation recorded below replaces that enum with
+typed token providers and named profiles. The consumer catalog is
 `src/test/resources/config/config.yaml`; `src/test/resources/testng.xml` selects QA locally and Gradle forwards
 a command-line `environment` system property to TestNG. `ApiClientFactory` accepts typed configuration and
-`CreateUserTest` no longer reads environment variables directly. Authentication configuration intentionally stops
-at `none` and `password-login` schemes until authentication architecture is discussed. INT and PROD use reserved
+`CreateUserTest` no longer reads environment variables directly. At this historical point authentication stopped
+at `none` and `password-login`; the accepted 2026-10-03 design below supersedes that limitation. INT and PROD use reserved
 `.invalid` hosts. Production body logging is consumer-configurable; the `allowDestructiveTests` flag cannot be
 enabled for PROD. A TestNG listener enforces that flag for tests in the `destructive` group. Compilation passes;
 tests were not executed.
@@ -568,3 +569,83 @@ The consumer YAML now declares the gateway and all six backing services independ
 once through `SuiteConfigListener`; a thin `BaseApiTest` retrieves the immutable suite value and creates clients
 without storing mutable invocation state. The checkout test deliberately selects auth, product, order, and payment
 service configurations and shares only its test-scoped `TestContext` across those clients.
+
+## Accepted authentication test-server capabilities — 2026-10-03
+
+Authentication remains invisible in ordinary framework tests, while authentication-specific tests will receive
+an explicit override path. Token acquisition and request authentication are separate responsibilities: OAuth 2.0
+and the existing username/password login obtain tokens, bearer authentication attaches tokens to protected calls,
+and JWT is a token format rather than a separate acquisition protocol.
+
+The local API test server now exposes four deterministic cases before framework authentication is implemented:
+the existing username/password-issued JWT bearer flow, OAuth 2.0 client credentials with scoped access tokens,
+header-based API-key authentication, and composite authentication requiring both JWT bearer and API key. Different
+operations select named authentication policies deterministically; the framework will not retry a rejected request
+with another scheme. A composite authenticator means all child authenticators are required, rather than choosing
+one automatically.
+
+## Accepted authentication profile selection — 2026-10-03
+
+Authentication is invisible in ordinary tests. The consumer configuration defines immutable, named authentication
+profiles, and a service may identify one profile as its default. An API operation may select a different named
+profile internally when methods in the same API class require different schemes. This supports bearer tokens from
+different acquisition mechanisms, API keys, and composite authentication without making tests pass credentials.
+
+Authentication selection has three explicit states: `INHERIT` uses the operation or service default, `DISABLED`
+deliberately sends no authentication, and `PROFILE(name)` selects a named profile. The resolution order is an
+explicit request/test override, then the API operation profile, then the service default, then no authentication.
+The distinction between unspecified and disabled is required for negative authentication tests.
+
+Profile selection is deterministic. The framework does not infer authentication from URI patterns and does not
+retry a rejected request with another scheme. A composite profile applies every member because the endpoint
+requires all of them; it is not an alternative-profile chooser. The eventual configuration loader must validate
+profile references, unknown names, duplicate or cyclic composite membership, credential placement, and service
+defaults before the suite starts.
+
+## Accepted credential sourcing — 2026-10-03
+
+Authentication configuration contains logical credential references rather than password, client-secret, API-key,
+or static-token values. The framework owns a small `CredentialSource` interface. Its first implementation reads
+environment variables supplied locally or through Jenkins Credentials Binding. A normalized reference such as
+`checkout-user-password` maps predictably to an environment variable such as
+`TAF_SECRET_CHECKOUT_USER_PASSWORD`.
+
+Secret values are not accepted from YAML, `FrameworkConfig`, TestNG XML, ordinary Jenkins parameters, or Java
+system properties. Non-secret provider settings such as username, client ID, scopes, token service, header name,
+and credential placement remain in consumer-owned YAML. Missing credentials fail with a configuration error that
+names only the logical reference and never includes the resolved value.
+
+Catalog loading stores and validates references but does not load every secret into the immutable suite
+configuration. Authentication-provider construction resolves the credentials it requires and converts them to
+typed credential values rather than arbitrary maps. The initial framework supplies `EnvironmentCredentialSource`.
+Later cloud integrations, including Vault, AWS Secrets Manager, Azure Key Vault, or equivalent company platforms,
+implement the same `CredentialSource` contract so authentication profiles and providers do not change.
+
+## Accepted token lifecycle and concurrency — 2026-10-03
+
+Authentication runtime objects are suite-scoped. Each named token-provider configuration creates one provider
+instance with its own thread-safe cache; different identities or clients use different named providers and never
+share cached credentials accidentally. Tokens are infrastructure state and do not belong in `TestContext`.
+
+The cache stores an opaque access token, its effective refresh time, and an optional refresh token. It refreshes
+before expiry with a bounded safety margin. A lock plus a second cache check provides single-flight behavior when
+parallel tests encounter expiry together. Username/password acquisition uses the refresh endpoint when a refresh
+token exists. OAuth 2.0 client credentials obtains a new token because that grant has no refresh token. Static-token
+providers return their credential unchanged. The framework does not decode JWT claims.
+
+An HTTP 401 does not automatically invalidate a token, select a different scheme, refresh, or replay the request.
+Those behaviors can hide authorization defects and can repeat side effects, so any future replay policy must be
+designed separately from general HTTP retries.
+
+## Authentication implementation status — 2026-10-03
+
+The accepted architecture is implemented under `framework.authentication` and `framework.config`. The YAML loader
+now validates typed password-login, OAuth client-credentials, and static-token providers plus bearer, API-key, and
+composite profiles. Service defaults and operation profiles resolve through `INHERIT`, `DISABLED`, and `PROFILE(name)`
+with request override, operation, service, then no-auth precedence.
+
+`EnvironmentCredentialSource` maps logical references to `TAF_SECRET_*` environment variables. The TestNG suite
+listener constructs one authentication runtime, token cache, and provider set per suite. Authentication executes
+before logging, explicit credential headers remain available for negative tests, and normal order/payment API methods
+no longer accept tokens. `docs/AUTHENTICATION.md` records configuration, required local variables, lifecycle, and
+extension guidance. Main and test sources compile; tests were not executed at the user's request.

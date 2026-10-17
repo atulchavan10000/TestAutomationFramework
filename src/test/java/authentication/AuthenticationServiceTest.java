@@ -8,6 +8,7 @@ import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import support.BaseApiTest;
 import support.RawApi;
+import testsupport.AuthenticationScenarioApi;
 
 import java.util.UUID;
 
@@ -16,7 +17,7 @@ import static org.hamcrest.Matchers.*;
 import static support.TestSteps.step;
 import static support.TestSteps.validation;
 
-/** Thirteen authentication scenarios including login and refresh-token behavior. */
+/** Authentication scenarios covering token operations and configured request profiles. */
 public final class AuthenticationServiceTest extends BaseApiTest {
     @DataProvider(name = "validCredentials")
     public Object[][] validCredentials() {
@@ -98,11 +99,56 @@ public final class AuthenticationServiceTest extends BaseApiTest {
                 () -> assertThat(response.statusCode(), is(401)));
     }
 
+    @Test(groups = {"service", "smoke"})
+    public void authenticatesWithPasswordLoginJwtBearerProfile() {
+        HttpResponse response = step("Call the JWT bearer authentication scenario",
+                () -> scenarios().jwtBearer());
+        validation("Password login supplies an accepted JWT bearer token", () -> {
+            assertThat(response.statusCode(), is(200));
+            assertThat(RawApi.body(response), containsString("\"scheme\":\"jwt-bearer\""));
+        });
+    }
+
+    @Test(groups = {"service", "smoke"})
+    public void authenticatesWithOAuthClientCredentialsProfile() {
+        HttpResponse response = step("Call the OAuth client-credentials authentication scenario",
+                () -> scenarios().oauthClientCredentials());
+        validation("OAuth client credentials supplies an accepted scoped bearer token", () -> {
+            assertThat(response.statusCode(), is(200));
+            assertThat(RawApi.body(response), containsString("\"scheme\":\"oauth2-client-credentials\""));
+        });
+    }
+
+    @Test(groups = {"service", "smoke"})
+    public void authenticatesWithApiKeyProfile() {
+        HttpResponse response = step("Call the API-key authentication scenario",
+                () -> scenarios().apiKey());
+        validation("The configured API key is accepted", () -> {
+            assertThat(response.statusCode(), is(200));
+            assertThat(RawApi.body(response), containsString("\"scheme\":\"api-key\""));
+        });
+    }
+
+    @Test(groups = {"service", "smoke"})
+    public void authenticatesWithCompositeJwtAndApiKeyProfile() {
+        HttpResponse response = step("Call the composite authentication scenario",
+                () -> scenarios().jwtAndApiKey());
+        validation("Both JWT bearer and API-key credentials are accepted", () -> {
+            assertThat(response.statusCode(), is(200));
+            assertThat(RawApi.body(response), containsString("\"scheme\":\"jwt-bearer+api-key\""));
+        });
+    }
+
     private AuthApi auth() {
         return new AuthApi(client("auth-service", new TestContext(UUID.randomUUID().toString())));
     }
 
     private RawApi raw() {
         return new RawApi(client("auth-service", new TestContext(UUID.randomUUID().toString())));
+    }
+
+    private AuthenticationScenarioApi scenarios() {
+        return new AuthenticationScenarioApi(
+                client("test-support-service", new TestContext(UUID.randomUUID().toString())));
     }
 }

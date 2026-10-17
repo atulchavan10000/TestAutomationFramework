@@ -13,6 +13,7 @@ import io.restassured.http.Header;
 import io.restassured.specification.RequestSpecification;
 import org.apache.http.impl.client.DefaultHttpClient;
 import org.apache.http.impl.client.DefaultHttpRequestRetryHandler;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Objects;
 
@@ -26,6 +27,7 @@ import java.util.Objects;
  */
 @SuppressWarnings("deprecation")
 public final class RestAssuredHttpClient implements HttpClient {
+    /** Adapts one framework request to REST Assured and converts its complete response back. */
     @Override
     public HttpResponse execute(HttpRequest request) {
         Objects.requireNonNull(request);
@@ -60,7 +62,19 @@ public final class RestAssuredHttpClient implements HttpClient {
             nativeRequest.noFilters().auth().none();
             request.headers().asMap().forEach((name, values) ->
                     values.forEach(value -> nativeRequest.header(new Header(name, value))));
-            if (request.hasBody()) nativeRequest.body(request.body());
+            if (request.hasBody()) {
+                byte[] body = request.body();
+                String contentType = request.headers().firstValue("Content-Type").orElse("")
+                        .split(";", 2)[0].trim();
+                // REST Assured's form encoder accepts an already encoded String,
+                // but attempts an unsupported encodeForm(contentType, byte[]) call
+                // when prepared bytes are supplied with this media type.
+                if ("application/x-www-form-urlencoded".equalsIgnoreCase(contentType)) {
+                    nativeRequest.body(new String(body, StandardCharsets.UTF_8));
+                } else {
+                    nativeRequest.body(body);
+                }
+            }
 
             io.restassured.response.Response received =
                     nativeRequest.request(request.method().name(), request.uri().toASCIIString());

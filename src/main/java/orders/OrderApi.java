@@ -19,28 +19,25 @@ public final class OrderApi {
         this.client = Objects.requireNonNull(client, "API client must not be null");
     }
 
-    public ApiResponse<OrderResponse> create(CreateOrderRequest request, String accessToken) {
-        return client.execute(new ApiRequest(HttpMethod.POST, PATH, request, bearer(accessToken)),
+    public ApiResponse<OrderResponse> create(CreateOrderRequest request) {
+        return create(request, RequestOptions.empty());
+    }
+
+    /** Explicit options remain available for authentication-specific and negative tests. */
+    public ApiResponse<OrderResponse> create(CreateOrderRequest request, RequestOptions options) {
+        return client.execute(new ApiRequest(HttpMethod.POST, PATH, request, options),
                 OrderResponse.class);
     }
 
-    public ApiResponse<OrderResponse> get(long orderId, String accessToken) {
-        RequestOptions options = RequestOptions.builder()
-                .header("Authorization", "Bearer " + requireToken(accessToken))
+    public ApiResponse<OrderResponse> get(long orderId) {
+        return get(orderId, RequestOptions.builder().pathParam("orderId", Long.toString(orderId)).build());
+    }
+
+    public ApiResponse<OrderResponse> get(long orderId, RequestOptions options) {
+        Objects.requireNonNull(options, "Request options must not be null");
+        RequestOptions complete = options.toBuilder()
                 .pathParam("orderId", Long.toString(orderId)).build();
-        return client.execute(new ApiRequest(HttpMethod.GET, PATH + "/{orderId}", null, options),
+        return client.execute(new ApiRequest(HttpMethod.GET, PATH + "/{orderId}", null, complete),
                 OrderResponse.class);
-    }
-
-    private static RequestOptions bearer(String token) {
-        return RequestOptions.builder()
-                .header("Authorization", "Bearer " + requireToken(token)).build();
-    }
-
-    private static String requireToken(String token) {
-        if (token == null || token.isBlank()) {
-            throw new IllegalArgumentException("Access token must not be blank");
-        }
-        return token;
     }
 }

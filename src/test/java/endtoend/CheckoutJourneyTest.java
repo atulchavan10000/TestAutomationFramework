@@ -2,6 +2,7 @@ package endtoend;
 
 import authentication.AuthApi;
 import framework.client.ApiResponse;
+import framework.client.RequestOptions;
 import framework.context.TestContext;
 import framework.http.HttpResponse;
 import org.testng.annotations.DataProvider;
@@ -93,21 +94,19 @@ public final class CheckoutJourneyTest extends BaseApiTest {
             description = "Replay a payment with the same idempotency key and receive the original payment")
     public void paymentReplayReturnsOriginalPayment() {
         TestContext context = new TestContext(UUID.randomUUID().toString());
-        String token = step("Authenticate the checkout user",
-                () -> auth(context).login("user1", "Password123!").body().accessToken());
         ProductApi products = products(context);
         long productId = step("Create a product for payment replay",
                 () -> createProduct(products, 2, new BigDecimal("15.00")));
         try {
             OrderResponse order = step("Create an order for the product",
                     () -> orders(context).create(new CreateOrderRequest(
-                            List.of(new OrderItemRequest(productId, 1))), token).body());
+                            List.of(new OrderItemRequest(productId, 1)))).body());
             PaymentRequest request = new PaymentRequest(order.id(), order.totalAmount(), order.currency(), "CARD");
             String key = UUID.randomUUID().toString();
             PaymentResponse first = step("Submit the original payment",
-                    () -> payments(context).pay(request, token, key).body());
+                    () -> payments(context).pay(request, key).body());
             PaymentResponse second = step("Replay payment with the same idempotency key",
-                    () -> payments(context).pay(request, token, key).body());
+                    () -> payments(context).pay(request, key).body());
             validation("Payment replay returns the original payment ID",
                     () -> assertThat(second.id(), is(first.id())));
         } finally {
@@ -123,8 +122,6 @@ public final class CheckoutJourneyTest extends BaseApiTest {
             description = "Reject an order that requests more stock than the product has")
     public void insufficientStockPropagatesFromProductToOrder() {
         TestContext context = new TestContext(UUID.randomUUID().toString());
-        String token = step("Authenticate the checkout user",
-                () -> auth(context).login("user1", "Password123!").body().accessToken());
         ProductApi products = products(context);
         long productId = step("Create a product with one item in stock",
                 () -> createProduct(products, 1, new BigDecimal("15.00")));
@@ -132,7 +129,7 @@ public final class CheckoutJourneyTest extends BaseApiTest {
             String json = "{\"items\":[{\"productId\":" + productId + ",\"quantity\":2}]}";
             support.RawApi orderRaw = new support.RawApi(client("order-service", context));
             HttpResponse rejected = step("Request an order for two items",
-                    () -> orderRaw.postJson("/api/v1/orders", json, ScenarioData.bearer(token)));
+                    () -> orderRaw.postJson("/api/v1/orders", json));
             validation("Order is rejected with HTTP 409",
                     () -> assertThat(rejected.statusCode(), is(409)));
             ProductResponse unchanged = step("Read product stock after the rejected order",
@@ -152,20 +149,18 @@ public final class CheckoutJourneyTest extends BaseApiTest {
             description = "Reuse one correlation ID across authentication, ordering, and payment calls")
     public void oneCorrelationIdSpansTheCompleteJourney() {
         TestContext context = new TestContext("correlation-journey-" + UUID.randomUUID());
-        String token = step("Authenticate the checkout user",
-                () -> auth(context).login("user1", "Password123!").body().accessToken());
-        String correlation = context.correlationId().orElseThrow();
+        String correlation = context.getOrCreateCorrelationId();
         ProductApi products = products(context);
         long productId = step("Create a product for the correlated journey",
                 () -> createProduct(products, 1, new BigDecimal("30.00")));
         try {
             OrderResponse order = step("Create an order with the shared correlation ID",
                     () -> orders(context).create(new CreateOrderRequest(
-                            List.of(new OrderItemRequest(productId, 1))), token).body());
+                            List.of(new OrderItemRequest(productId, 1)))).body());
             step("Pay for the order with the shared correlation ID",
                     () -> payments(context).pay(
                             new PaymentRequest(order.id(), order.totalAmount(), order.currency(), "CARD"),
-                            token, UUID.randomUUID().toString()));
+                            UUID.randomUUID().toString()));
             validation("Correlation ID remains unchanged for the complete journey",
                     () -> assertThat(context.correlationId().orElseThrow(), is(correlation)));
         } finally {
@@ -178,20 +173,31 @@ public final class CheckoutJourneyTest extends BaseApiTest {
 
     private Flow startFlow(String username, String password, int quantity, BigDecimal price, String method) {
         TestContext context = new TestContext(UUID.randomUUID().toString());
-        String token = step("Authenticate user " + username,
+        // Seeded user1 uses the service default. A newly created identity is an explicit
+        // test-specific override because it cannot be declared as a stable suite profile.
+        String token = "user1".equals(username) ? null : step("Authenticate user " + username,
                 () -> auth(context).login(username, password).body().accessToken());
         ProductApi products = products(context);
         long productId = step("Create a product with stock for checkout",
                 () -> createProduct(products, quantity, price));
-        OrderResponse order = step("Create an order and reserve product stock",
-                () -> orders(context).create(new CreateOrderRequest(
-                        List.of(new OrderItemRequest(productId, quantity))), token).body());
+        CreateOrderRequest orderRequest = new CreateOrderRequest(
+                List.of(new OrderItemRequest(productId, quantity)));
+        OrderResponse order = step("Create an order and reserve product stock", () -> token == null
+                ? orders(context).create(orderRequest).body()
+                : orders(context).create(orderRequest, ScenarioData.bearer(token)).body());
+        PaymentRequest paymentRequest = new PaymentRequest(
+                order.id(), order.totalAmount(), order.currency(), method);
         PaymentResponse payment = step("Pay for the order using " + method,
-                () -> payments(context).pay(
-                        new PaymentRequest(order.id(), order.totalAmount(), order.currency(), method),
-                        token, UUID.randomUUID().toString()).body());
-        OrderResponse confirmed = step("Read the order after payment",
-                () -> orders(context).get(order.id(), token).body());
+                () -> token == null
+                        ? payments(context).pay(paymentRequest, UUID.randomUUID().toString()).body()
+                        : payments(context).pay(paymentRequest, RequestOptions.builder()
+                                .header("Authorization", "Bearer " + token)
+                                .header("Idempotency-Key", UUID.randomUUID().toString()).build()).body());
+        OrderResponse confirmed = step("Read the order after payment", () -> token == null
+                ? orders(context).get(order.id()).body()
+                : orders(context).get(order.id(), RequestOptions.builder()
+                        .header("Authorization", "Bearer " + token)
+                        .pathParam("orderId", Long.toString(order.id())).build()).body());
         return new Flow(products, productId, payment, confirmed);
     }
 

@@ -34,6 +34,7 @@ public final class HttpHeaders {
     private final Map<String, List<String>> entries;
 
     // Private: callers create instances through builder().build().
+    /** Builds the immutable value from a normalized defensive copy. */
     private HttpHeaders(Map<String, List<String>> source) {
         this.entries = immutableDeepCopy(source);
     }
@@ -128,11 +129,13 @@ public final class HttpHeaders {
 
         private final Map<String, List<String>> entries;
 
+        /** Starts with an empty, insertion-ordered header collection. */
         private Builder() {
             this.entries = new LinkedHashMap<>();
         }
 
         // Copy each list so this builder shares no mutable collections with source.
+        /** Creates a mutable copy used by {@link HttpHeaders#toBuilder()}. */
         private Builder(Map<String, List<String>> source) {
             this();
             for (Map.Entry<String, List<String>> entry : source.entrySet()) {

@@ -1,4 +1,5 @@
 package framework.client;
+import framework.authentication.AuthenticationRuntime;
 import framework.config.FrameworkConfig;
 import framework.config.ServiceConfig;
 import framework.context.TestContext;
@@ -12,23 +13,50 @@ import framework.serialization.JacksonJsonCodec;
 import java.net.URI;
 import java.time.Duration;
 import java.util.List;
-/** Minimal explicit wiring. Each test invocation calls this with a fresh context. */
+/**
+ * Minimal composition root for an {@link ApiClient}. Each test invocation uses
+ * a fresh {@link TestContext}, while the optional authentication runtime may be
+ * shared safely for the complete suite.
+ */
 public final class ApiClientFactory {
+    /** Static composition root; callers obtain clients through the factory methods. */
     private ApiClientFactory() {}
 
     /**
-     * Builds a client for one named service from the suite's immutable configuration.
-     * Product tests choose the service; they do not read YAML or environment variables.
+     * Builds an unauthenticated client for one named service from the suite's
+     * immutable configuration. Product tests normally use the overload that
+     * receives the suite authentication runtime; token acquisition uses this
+     * overload to prevent recursive authentication.
      */
     public static ApiClient forTest(
             FrameworkConfig config,
             String serviceName,
             TestContext context) {
 
+        return forTest(config, serviceName, context, null);
+    }
+
+    /**
+     * Builds a client using the suite-scoped provider/profile registry.
+     * Passing {@code null} deliberately omits authentication, which is required
+     * for login and token endpoints.
+     */
+    public static ApiClient forTest(FrameworkConfig config, String serviceName, TestContext context,
+            AuthenticationRuntime authenticationRuntime) {
+
         ServiceConfig service = config.service(serviceName);
-        return forTest(
-                service.baseUri(), service.timeout(), context, config.logBodies(),
-                config.maxBodyLogCharacters());
+        HttpHeaders common = HttpHeaders.builder().set("Accept", "application/json").build();
+
+        // Static interceptors run in declaration order. ApiClient prepends the
+        // per-request AuthenticationInterceptor when a runtime is present, so
+        // logging observes the final request after authentication, headers, and
+        // correlation have been applied.
+        return new ApiClient(service.baseUri(), service.timeout(), new JacksonJsonCodec(),
+                new RestAssuredHttpClient(),
+                List.of(new CommonHeadersInterceptor(common), new CorrelationIdInterceptor(context),
+                        new LoggingInterceptor(context, "X-Correlation-ID", config.logBodies()
+                                ? JacksonBodyLogFormatter.defaults(config.maxBodyLogCharacters()) : null)),
+                authenticationRuntime, service.defaultAuthenticationProfile().orElse(null), context);
     }
 
     /**

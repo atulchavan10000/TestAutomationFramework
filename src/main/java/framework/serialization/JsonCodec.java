@@ -38,9 +38,10 @@ public interface JsonCodec {
      * Converts JSON bytes into a value of the requested Java type.
      *
      * Example:
-     * CreateUserResponse user = codec.deserialize(bytes, CreateUserResponse.class);
+     * {@code CreateUserResponse user = codec.deserialize(bytes, CreateUserResponse.class);}
      *
-     * The method declares its own type parameter R. Class<T> supplies the runtime
+     * The method declares its own type parameter {@code T}. {@code Class<T>}
+     * supplies the runtime
      * target type and connects it to the return type, so callers need no cast.
      * JsonCodec itself is not generic: one codec can handle many DTO types.
      *
@@ -55,8 +56,8 @@ public interface JsonCodec {
      * The concrete implementation's encoding and mapping settings must be
      * documented; they are not selected by this interface alone.
      *
-     * Class<T> handles simple DTO targets and arrays. It cannot fully describe
-     * List<CreateUserResponse>; a framework-owned generic type descriptor is a
+     * {@code Class<T>} handles simple DTO targets and arrays. It cannot fully
+     * describe {@code List<CreateUserResponse>}; a framework-owned generic type descriptor is a
      * later extension. Do not use raw List.class and claim typed element safety.
      */
     <T> T deserialize(byte[] json, Class<T> targetType);

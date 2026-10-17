@@ -13,13 +13,13 @@ import java.util.Objects;
  * ApiClient coordinates mapping through JsonCodec and constructs this result.
  *
  * Example (assuming raw and mappedUser were produced by execution and mapping):
- * ApiResponse<CreateUserResponse> result = new ApiResponse<>(raw, mappedUser);
- * CreateUserResponse user = result.body();
- * int status = result.rawResponse().statusCode();
- * byte[] originalContent = result.rawResponse().body();
+ * {@code ApiResponse<CreateUserResponse> result = new ApiResponse<>(raw, mappedUser);}
+ * {@code CreateUserResponse user = result.body();}
+ * {@code int status = result.rawResponse().statusCode();}
+ * {@code byte[] originalContent = result.rawResponse().body();}
  *
  * For a deliberately unmapped result or an operation expecting no typed body:
- * ApiResponse<Void> result = new ApiResponse<>(raw, null);
+ * {@code ApiResponse<Void> result = new ApiResponse<>(raw, null);}
  *
  * Initial contract for review: body() may return null when no mapped value is
  * available by design (empty content, mapping skipped, or a mapped JSON null).
@@ -60,7 +60,8 @@ public final class ApiResponse<T> {
 
     /**
      * Returns the mapped application value, or null when no typed value exists.
-     * The generic R makes the return type match ApiResponse<R> without a cast.
+     * The generic {@code T} makes the return type match {@code ApiResponse<T>}
+     * without a cast.
      *
      * This returns the actual DTO reference, not a deep copy. If R is a mutable
      * DTO, its fields can still change. final fixes this wrapper's reference;

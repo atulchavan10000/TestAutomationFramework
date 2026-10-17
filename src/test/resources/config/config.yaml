@@ -17,45 +17,74 @@ environments:
     logging:
       bodies: false
 
+# Stable authentication behavior belongs here; secret values come from TAF_SECRET_* variables.
+authentication:
+  tokenProviders:
+    checkout-user:
+      type: password-login
+      service: auth-service
+      username: user1
+      passwordCredential: checkout-user-password
+      loginPath: /api/v1/auth/login
+      refreshPath: /api/v1/auth/refresh
+    automation-client:
+      type: oauth2-client-credentials
+      service: auth-service
+      clientId: automation-client
+      clientSecretCredential: oauth-client-secret
+      tokenPath: /api/v1/auth/oauth2/token
+      scopes: [test:read]
+  profiles:
+    user-jwt:
+      type: bearer
+      tokenProvider: checkout-user
+    service-oauth:
+      type: bearer
+      tokenProvider: automation-client
+    test-api-key:
+      type: api-key
+      credential: test-api-key
+      placement: header
+      name: X-API-Key
+    user-jwt-and-api-key:
+      type: composite
+      members: [user-jwt, test-api-key]
+
 services:
   api-gateway:
-    auth: {scheme: password-login}
+    defaultAuthentication: user-jwt
     environments:
       qa: {baseUrl: "http://localhost:8000"}
       int: {baseUrl: "https://gateway.int.example.invalid"}
       prod: {baseUrl: "https://gateway.prod.example.invalid"}
   user-service:
-    auth: {scheme: none}
     environments:
       qa: {baseUrl: "http://localhost:8001"}
       int: {baseUrl: "https://users.int.example.invalid"}
       prod: {baseUrl: "https://users.prod.example.invalid"}
   auth-service:
-    auth: {scheme: password-login}
     environments:
       qa: {baseUrl: "http://localhost:8002"}
       int: {baseUrl: "https://auth.int.example.invalid"}
       prod: {baseUrl: "https://auth.prod.example.invalid"}
   product-service:
-    auth: {scheme: none}
     environments:
       qa: {baseUrl: "http://localhost:8003"}
       int: {baseUrl: "https://products.int.example.invalid"}
       prod: {baseUrl: "https://products.prod.example.invalid"}
   order-service:
-    auth: {scheme: password-login}
+    defaultAuthentication: user-jwt
     environments:
       qa: {baseUrl: "http://localhost:8004"}
       int: {baseUrl: "https://orders.int.example.invalid"}
       prod: {baseUrl: "https://orders.prod.example.invalid"}
   payment-service:
-    auth: {scheme: password-login}
+    defaultAuthentication: user-jwt
     environments:
       qa: {baseUrl: "http://localhost:8005"}
       int: {baseUrl: "https://payments.int.example.invalid"}
       prod: {baseUrl: "https://payments.prod.example.invalid"}
   test-support-service:
-    auth: {scheme: none}
     environments:
       qa: {baseUrl: "http://localhost:8006"}
       int: {baseUrl: "https://test-support.int.example.invalid"}

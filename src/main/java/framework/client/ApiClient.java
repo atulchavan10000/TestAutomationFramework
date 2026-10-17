@@ -1,5 +1,8 @@
 package framework.client;
 
+import framework.authentication.AuthenticationInterceptor;
+import framework.authentication.AuthenticationRuntime;
+import framework.context.TestContext;
 import framework.http.HttpHeaders;
 import framework.http.HttpRequest;
 import framework.http.HttpResponse;
@@ -11,6 +14,7 @@ import framework.serialization.JsonCodec;
 import java.net.URI;
 import java.time.Duration;
 import java.util.List;
+import java.util.ArrayList;
 import java.util.Locale;
 import java.util.Objects;
 
@@ -27,13 +31,29 @@ public final class ApiClient {
     private final JsonCodec codec;
     private final HttpClient transport;
     private final List<HttpInterceptor> interceptors;
+    private final AuthenticationRuntime authenticationRuntime;
+    private final String serviceDefaultAuthenticationProfile;
+    private final TestContext testContext;
 
+    /** Creates a client without authentication profile resolution. */
     public ApiClient(
             URI baseUri,
             Duration defaultTimeout,
             JsonCodec codec,
             HttpClient transport,
             List<HttpInterceptor> interceptors) {
+
+        this(baseUri, defaultTimeout, codec, transport, interceptors, null, null, null);
+    }
+
+    /**
+     * Creates a client with optional suite-scoped authentication and a
+     * test-scoped context. The supplied interceptor list excludes authentication;
+     * the client prepends it per request when a runtime is available.
+     */
+    public ApiClient(URI baseUri, Duration defaultTimeout, JsonCodec codec, HttpClient transport,
+            List<HttpInterceptor> interceptors, AuthenticationRuntime authenticationRuntime,
+            String serviceDefaultAuthenticationProfile, TestContext testContext) {
 
         this.uriResolver = new RequestUriResolver(baseUri);
         this.defaultTimeout = Objects.requireNonNull(
@@ -45,6 +65,12 @@ public final class ApiClient {
         this.transport = Objects.requireNonNull(transport, "HTTP transport must not be null");
         this.interceptors = List.copyOf(
                 Objects.requireNonNull(interceptors, "Interceptors must not be null"));
+        this.authenticationRuntime = authenticationRuntime;
+        this.serviceDefaultAuthenticationProfile = serviceDefaultAuthenticationProfile;
+        this.testContext = testContext;
+        if (authenticationRuntime != null && testContext == null) {
+            throw new IllegalArgumentException("A test context is required when authentication is enabled");
+        }
     }
 
     /**
@@ -112,7 +138,16 @@ public final class ApiClient {
         }
 
         prepared.headers(headers.build());
-        return new DefaultInterceptorChain(interceptors, transport)
+        List<HttpInterceptor> executionInterceptors = interceptors;
+        if (authenticationRuntime != null) {
+            executionInterceptors = new ArrayList<>();
+            // Authentication runs before logging so logs show the final request with sensitive values redacted.
+            executionInterceptors.add(new AuthenticationInterceptor(authenticationRuntime,
+                    options.authentication(), request.operationAuthenticationProfile(),
+                    serviceDefaultAuthenticationProfile, testContext));
+            executionInterceptors.addAll(interceptors);
+        }
+        return new DefaultInterceptorChain(executionInterceptors, transport)
                 .proceed(prepared.build());
     }
 }

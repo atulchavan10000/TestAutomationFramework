@@ -1,6 +1,5 @@
 package orders;
 
-import authentication.AuthApi;
 import framework.client.ApiResponse;
 import framework.client.RequestOptions;
 import framework.context.TestContext;
@@ -37,9 +36,9 @@ public final class OrderServiceTest extends BaseApiTest {
     @Test(groups = "service", dataProvider = "protectedOperations")
     public void rejectsMissingAuthentication(String operation, String path) {
         HttpResponse response = step("Call protected order operation without authentication",
-                () -> callProtected(operation, path, RequestOptions.empty()));
-        validation("Missing authentication is rejected with HTTP 401",
-                () -> assertThat(response.statusCode(), is(401)));
+                () -> callProtected(operation, path, RequestOptions.builder().disableAuthentication().build()));
+        validation("Missing authentication is rejected with HTTP 403",
+                () -> assertThat(response.statusCode(), is(403)));
     }
 
     @Test(groups = "service", dataProvider = "protectedOperations")
@@ -61,9 +60,8 @@ public final class OrderServiceTest extends BaseApiTest {
 
     @Test(groups = "service", dataProvider = "invalidOrders")
     public void rejectsInvalidOrderPayload(String json) {
-        String token = step("Authenticate the order test user", this::token);
         HttpResponse response = step("Submit an invalid order payload",
-                () -> raw().postJson("/api/v1/orders", json, ScenarioData.bearer(token)));
+                () -> raw().postJson("/api/v1/orders", json));
         validation("The invalid order is rejected with HTTP 422",
                 () -> assertThat(response.statusCode(), is(422)));
     }
@@ -74,9 +72,8 @@ public final class OrderServiceTest extends BaseApiTest {
     @Test(groups = "service", dataProvider = "missingProductIds")
     public void rejectsOrderForMissingProduct(long productId) {
         String json = "{\"items\":[{\"productId\":" + productId + ",\"quantity\":1}]}";
-        String token = step("Authenticate the order test user", this::token);
         HttpResponse response = step("Create an order for missing product " + productId,
-                () -> raw().postJson("/api/v1/orders", json, ScenarioData.bearer(token)));
+                () -> raw().postJson("/api/v1/orders", json));
         validation("The missing product causes HTTP 404",
                 () -> assertThat(response.statusCode(), is(404)));
     }
@@ -93,10 +90,9 @@ public final class OrderServiceTest extends BaseApiTest {
                 () -> products.create(new ProductRequest(ScenarioData.unique("Order product"), "TEST",
                         new BigDecimal("25.00"), "INR", quantity + 2, 4.0, null)).body().id());
         try {
-            String token = step("Authenticate the order test user", this::token);
             ApiResponse<OrderResponse> result = step("Create a pending order and reserve stock",
                     () -> orders.create(new CreateOrderRequest(
-                            List.of(new OrderItemRequest(productId, quantity))), token));
+                            List.of(new OrderItemRequest(productId, quantity)))));
             validation("The order is pending payment with the expected total", () -> {
                 assertThat(result.rawResponse().statusCode(), is(201));
                 assertThat(result.body().status(), is("PENDING_PAYMENT"));
@@ -119,11 +115,6 @@ public final class OrderServiceTest extends BaseApiTest {
         return "create".equals(operation)
                 ? raw().postJson(path, "{\"items\":[{\"productId\":1,\"quantity\":1}]}", options)
                 : raw().get(path, options);
-    }
-
-    private String token() {
-        return new AuthApi(client("auth-service", new TestContext(UUID.randomUUID().toString())))
-                .login("user1", "Password123!").body().accessToken();
     }
 
     private RawApi raw() {

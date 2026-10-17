@@ -20,19 +20,19 @@ public final class PaymentApi {
 
     public ApiResponse<PaymentResponse> pay(
             PaymentRequest request,
-            String accessToken,
             String idempotencyKey) {
 
-        if (accessToken == null || accessToken.isBlank()) {
-            throw new IllegalArgumentException("Access token must not be blank");
-        }
         if (idempotencyKey == null || idempotencyKey.isBlank()) {
             throw new IllegalArgumentException("Idempotency key must not be blank");
         }
         RequestOptions options = RequestOptions.builder()
-                .header("Authorization", "Bearer " + accessToken)
                 .header("Idempotency-Key", idempotencyKey)
                 .build();
+        return pay(request, options);
+    }
+
+    /** Explicit option path used when a test must override authentication itself. */
+    public ApiResponse<PaymentResponse> pay(PaymentRequest request, RequestOptions options) {
         return client.execute(new ApiRequest(
                 HttpMethod.POST, "/api/v1/payments", request, options), PaymentResponse.class);
     }

@@ -38,6 +38,7 @@ public final class SensitiveDataRedactor {
 
     private final Set<String> sensitiveNames;
 
+    /** Normalizes and freezes the caller's sensitive-name policy. */
     public SensitiveDataRedactor(Set<String> sensitiveNames) {
         if (sensitiveNames == null) {
             throw new NullPointerException("Sensitive names must not be null");
@@ -114,6 +115,7 @@ public final class SensitiveDataRedactor {
         return result.append('}').toString();
     }
 
+    /** Redacts sensitive query values without changing the spelling of unrelated pairs. */
     private String redactQuery(String rawQuery) {
         String[] parameters = rawQuery.split("&", -1);
         StringBuilder result = new StringBuilder();
@@ -139,6 +141,7 @@ public final class SensitiveDataRedactor {
         return sensitiveNames.contains(normalizeName(name));
     }
 
+    /** Decodes a query name for matching and falls back safely when encoding is malformed. */
     private static String decodeQueryName(String rawName) {
         try {
             return URLDecoder.decode(rawName, StandardCharsets.UTF_8);
@@ -149,7 +152,7 @@ public final class SensitiveDataRedactor {
         }
     }
 
-    /** Treat access-token, access_token and accessToken as the same name. */
+    /** Treats names such as access-token, access_token, and accessToken identically. */
     private static String normalizeName(String name) {
         String lower = name.toLowerCase(Locale.ROOT);
         StringBuilder normalized = new StringBuilder(lower.length());
@@ -162,6 +165,7 @@ public final class SensitiveDataRedactor {
         return normalized.toString();
     }
 
+    /** Escapes line-breaking control characters before values enter logs. */
     private static String singleLine(String value) {
         return value.replace("\r", "\\r").replace("\n", "\\n").replace("\t", "\\t");
     }

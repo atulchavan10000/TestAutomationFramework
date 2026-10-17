@@ -1,7 +1,7 @@
 # CI/CD Architecture and Scaling Plan
 
 Status: accepted architectural direction; implementation has not started  
-Updated: 2026-09-27
+Updated: 2026-10-15
 
 ## 1. Purpose and document boundary
 
@@ -36,6 +36,11 @@ large executor pool, or statically assigned test suites.
   laptop and ASUS server, subject to measured CPU and memory limits.
 - Use capability labels so heterogeneous machines do not receive work they cannot run reliably.
 - Make AWS worker capacity explicitly opt-in from Jenkins. Framework Java code must not provision infrastructure.
+- Support build-scoped ephemeral stub/mock dependencies as an optional test-environment mode. Jenkins or the
+  environment orchestrator owns their provisioning and destruction; framework Java code only consumes their
+  configured endpoints and control APIs.
+- Prefer co-locating an ephemeral dependency with its test worker on one build-specific Docker network or
+  Kubernetes execution boundary unless the test deliberately requires a cross-host network boundary.
 - Preserve all Stage 5 Terraform, Helm/Kubernetes, image, validation, and runbook source after AWS resources are
   destroyed so the disposable environment can be recreated for a later demonstration.
 
@@ -449,6 +454,72 @@ At AWS scale, the preferred model is an ephemeral namespace or environment per b
 environments may remain useful for smoke coverage, but they impose a lower concurrency ceiling and a larger risk
 of cross-build interference.
 
+### 9.1 Build-scoped ephemeral test dependencies and service virtualization
+
+A stub, mock, simulator, callback receiver, or other controllable test dependency does not need to run on
+permanently available hardware when it is used only by a CI build. The preferred optional model is to start an
+immutable container for the build, wait for readiness, run the eligible tests against it, collect its evidence,
+and destroy it during unconditional Pipeline cleanup.
+
+For local Docker execution, the recommended topology is sibling containers on one build-specific network:
+
+```text
+Jenkins build on one physical node
+└── uniquely named build network
+    ├── Jenkins agent container running Gradle/TestNG
+    └── stub/mock service container
+```
+
+The dependency and test process must not be packaged into one container. Separate containers preserve image,
+lifecycle, logs, health, and resource ownership. The test process receives a stable network alias such as
+`http://payment-stub:8080` through the framework's supported runtime configuration override. Fixed host ports
+are avoided unless an external caller requires them; parallel builds otherwise collide.
+
+The Pipeline or environment orchestrator owns this lifecycle:
+
+1. Select an immutable image tag or digest.
+2. Create a uniquely named network, Compose project, pod, or namespace labelled with build identity.
+3. Start the dependency with build-specific configuration and bounded resources.
+4. Wait for a real readiness condition rather than sleeping for a fixed interval.
+5. Configure deterministic scenarios through a documented control API when required.
+6. Pass the resolved endpoint to the framework through declared configuration overrides.
+7. Run the eligible test shard or suite.
+8. Archive container logs, scenario history, version, health, and failure diagnostics before deletion.
+9. Remove the dependency and network in an unconditional `post`/finalization path.
+10. Use a bounded janitor to find labelled resources left by node, agent, or controller failure.
+
+The Java framework must not call Docker, Kubernetes, or cloud provisioning APIs. It may use the dependency's
+test-facing control API to select or reset a scenario, provided the scenario is isolated by build or invocation
+identity. Infrastructure creation remains Pipeline, Docker Compose, Kubernetes, or platform responsibility.
+
+Co-location is the default because placing the dependency on another Jenkins node adds cross-host discovery,
+firewall, routing, lifecycle, and failure coordination. A separate node is justified only for a resource-heavy
+dependency or when the network boundary is part of the experiment. Tests running on another node require a
+deliberately reachable endpoint and must not assume that container `localhost` crosses hosts.
+
+The model evolves with the delivery stages:
+
+- **Stages 1–2:** a uniquely named Docker Compose project or sibling container network per build on an eligible
+  x86 host.
+- **Stage 4:** an ephemeral Jenkins agent plus sibling dependency containers on the same Docker host, with host
+  capacity and Docker-daemon access controlled explicitly.
+- **Stage 5:** a sidecar in the shard pod when one shard owns the dependency, or an ephemeral build namespace when
+  multiple shards must share coordinated state.
+
+Giving an agent unrestricted access to the host Docker socket is a material security boundary. The implementation
+must use a trusted Pipeline and restricted eligible nodes, and should prefer a controlled provisioning mechanism
+over arbitrary test-authored Docker commands. Dependency images are scanned, pinned, non-privileged where
+possible, resource-limited, and prevented from receiving unrelated credentials.
+
+This pattern is appropriate for lightweight deterministic dependencies that start quickly and have build-scoped
+state. A persistent shared environment remains preferable for heavy services, large datasets, licensed systems,
+slow startup, or deliberate cross-build state. Startup and teardown time must be measured separately from test
+execution so ephemeral isolation is not presented as free.
+
+The capability is accepted only when concurrent builds have no naming, port, data, or scenario collision; a
+failed readiness check prevents tests from starting; logs survive teardown; cleanup runs after success, failure,
+and cancellation; and a simulated lost agent leaves resources that the janitor can identify safely by labels.
+
 ## 10. Results, history, and observability
 
 Ephemeral agent files disappear when a pod or container is removed. Before termination, each shard must publish:
@@ -529,6 +600,8 @@ The architecture is locked, but these implementation details will be decided imm
 - Parent-versus-generic-child Pipeline implementation details
 - Infrastructure-failure classification and retry limits
 - Dynamic Docker-agent mechanism for Stage 4
+- Exact Docker Compose or controlled Docker provisioning mechanism for build-scoped ephemeral dependencies
+- Stub control-API isolation model when several shards share one build-scoped dependency
 - AWS region, VPC cost design, and EKS Kubernetes version
 - Terraform state backend and module/version policy
 - Karpenter versus EKS Auto Mode implementation choice; the current recommendation is Karpenter for deeper learning

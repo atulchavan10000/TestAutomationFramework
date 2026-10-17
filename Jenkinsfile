@@ -87,13 +87,28 @@ pipeline {
 
         stage('Test') {
             steps {
-                sh '''
-                    ./gradlew \
-                      --no-daemon \
-                      --stacktrace \
-                      -Denvironment="${ENVIRONMENT}" \
-                      clean test
-                '''
+                withCredentials([
+                    string(
+                        credentialsId: 'taf-qa-checkout-user-password',
+                        variable: 'TAF_SECRET_CHECKOUT_USER_PASSWORD'
+                    ),
+                    string(
+                        credentialsId: 'taf-qa-oauth-client-secret',
+                        variable: 'TAF_SECRET_OAUTH_CLIENT_SECRET'
+                    ),
+                    string(
+                        credentialsId: 'taf-qa-test-api-key',
+                        variable: 'TAF_SECRET_TEST_API_KEY'
+                    )
+                ]) {
+                    sh '''
+                        ./gradlew \
+                          --no-daemon \
+                          --stacktrace \
+                          -Denvironment="${ENVIRONMENT}" \
+                          clean test
+                    '''
+                }
 
                 sh '''
                     test -d build/test-results/test
