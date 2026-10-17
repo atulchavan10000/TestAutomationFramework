@@ -117,4 +117,6 @@ profile name while the test only chooses the business operation.
 API-key, and composite profiles against the test services. `AuthenticationRuntimeTest` provides
 deterministic framework-level coverage for a static bearer token, single-flight parallel cache
 acquisition, the exact early-refresh boundary, refresh-token use, and the no-refresh/no-replay 401
-policy.
+policy. These responsibilities are deliberately separated: `gradlew test` runs service coverage,
+while `gradlew frameworkTest` runs framework self-tests without service configuration, credentials,
+or running APIs. The standard `gradlew check` lifecycle runs both and keeps separate reports.

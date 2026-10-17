@@ -664,3 +664,8 @@ single-flight acquisition under parallel cache misses, the exact early-refresh b
 API-key, and composite profiles. The five focused framework authentication tests compile and pass locally; this
 verification supersedes the earlier statement that authentication tests had not been executed, without claiming that
 the complete service suite was run.
+
+Framework self-tests and service-under-test coverage have separate execution boundaries. `frameworkTest` runs the
+deterministic framework suite without the service bootstrap, credential resolution, or running APIs. `test` retains
+only tests against the configured services. The standard `check` lifecycle runs both tasks while preserving distinct
+results and reports; framework results must not be counted or described as service coverage.

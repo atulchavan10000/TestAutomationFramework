@@ -41,6 +41,24 @@ tasks.test {
     }
 }
 
+val frameworkTest by tasks.registering(Test::class) {
+    group = "verification"
+    description = "Runs deterministic tests of the automation framework itself."
+    testClassesDirs = sourceSets["test"].output.classesDirs
+    classpath = sourceSets["test"].runtimeClasspath
+
+    useTestNG {
+        suites("src/test/resources/framework-testng.xml")
+    }
+
+    // Keep reports and execution ordering distinct from service-under-test coverage.
+    shouldRunAfter(tasks.test)
+}
+
+tasks.check {
+    dependsOn(frameworkTest)
+}
+
 tasks.withType<JavaCompile>().configureEach {
     options.release.set(17)
     // Show the exact source location when a library API becomes deprecated.

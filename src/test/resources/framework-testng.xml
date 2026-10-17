@@ -1,0 +1,13 @@
+<!DOCTYPE suite SYSTEM "https://testng.org/testng-1.1.dtd">
+<suite name="Framework verification suite">
+    <!-- No service bootstrap, environment catalog, credentials, or running APIs are required. -->
+    <listeners>
+        <listener class-name="support.TestLifecycleLogger"/>
+    </listeners>
+
+    <test name="Authentication framework tests">
+        <classes>
+            <class name="framework.authentication.AuthenticationRuntimeTest"/>
+        </classes>
+    </test>
+</suite>

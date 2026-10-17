@@ -17,9 +17,8 @@
     </listeners>
 
     <test name="Jenkins API suite">
-        <!-- Service coverage plus deterministic framework authentication-policy tests. -->
+        <!-- These classes exercise the running services, not framework self-tests. -->
         <classes>
-            <class name="framework.authentication.AuthenticationRuntimeTest"/>
             <class name="health.ServiceHealthTest"/>
             <class name="users.UserServiceCoverageTest"/>
             <class name="authentication.AuthenticationServiceTest"/>
