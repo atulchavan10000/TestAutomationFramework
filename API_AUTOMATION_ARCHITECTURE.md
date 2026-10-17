@@ -649,3 +649,18 @@ listener constructs one authentication runtime, token cache, and provider set pe
 before logging, explicit credential headers remain available for negative tests, and normal order/payment API methods
 no longer accept tokens. `docs/AUTHENTICATION.md` records configuration, required local variables, lifecycle, and
 extension guidance. Main and test sources compile; tests were not executed at the user's request.
+
+## Accepted authentication verification and 401 policy — 2026-10-17
+
+The user reaffirmed that the framework must not replay a request after HTTP 401. A 401 is returned unchanged and
+does not invalidate or refresh a token, select another authentication scheme/profile, or resend the request. It is
+also excluded from any future general HTTP retry policy. This differs from proactive refresh before a request when a
+cached token reaches its early-refresh boundary. A deliberately separate call remains available to test code when
+the scenario itself requires one.
+
+Authentication follow-up coverage now includes deterministic framework tests for static bearer-token application,
+single-flight acquisition under parallel cache misses, the exact early-refresh boundary, refresh-token use, and the
+401 no-refresh/no-replay rule. Existing service tests cover password-login JWT bearer, OAuth 2.0 client credentials,
+API-key, and composite profiles. The five focused framework authentication tests compile and pass locally; this
+verification supersedes the earlier statement that authentication tests had not been executed, without claiming that
+the complete service suite was run.

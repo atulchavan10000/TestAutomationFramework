@@ -70,6 +70,21 @@ Tokens are not stored in `TestContext`: they are provider state shared safely ac
 The framework does not decode JWT claims, refresh in response to every 401, replay failed requests,
 or combine token refresh with general HTTP retry policy.
 
+## HTTP 401 policy
+
+An HTTP 401 response is returned to the caller unchanged. It never causes the framework to:
+
+- invalidate or refresh the current token;
+- select another authentication profile or scheme;
+- resend the rejected request; or
+- treat the request as eligible for a future general HTTP retry policy.
+
+This is intentionally stricter than proactive expiry refresh. A provider may refresh before sending
+a request when its cached token reaches the configured early-refresh boundary. Once a request has
+been sent and rejected with 401, however, the framework performs no hidden recovery. This preserves
+the original failure for assertions and diagnostics and avoids repeating a potentially state-changing
+operation. A test may make a separate, explicit call when that is the scenario being exercised.
+
 ## Pipeline position and overrides
 
 `AuthenticationInterceptor` runs before request logging. Logging can therefore describe the final
@@ -95,3 +110,11 @@ RequestOptions oauth = RequestOptions.builder()
 
 `AuthenticationScenarioApi` shows the preferred operation-level form: each method owns its stable
 profile name while the test only chooses the business operation.
+
+## Verification coverage
+
+`AuthenticationServiceTest` exercises password-login JWT bearer, OAuth 2.0 client credentials,
+API-key, and composite profiles against the test services. `AuthenticationRuntimeTest` provides
+deterministic framework-level coverage for a static bearer token, single-flight parallel cache
+acquisition, the exact early-refresh boundary, refresh-token use, and the no-refresh/no-replay 401
+policy.

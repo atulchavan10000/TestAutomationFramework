@@ -1,0 +1,491 @@
+1
+00:00:00,000 --> 00:00:05,932
+This video explains the authentication architecture in the Test Automation Framework.
+
+2
+00:00:05,932 --> 00:00:18,875
+The goal is to understand how password login, OAuth client credentials, static bearer tokens, API keys, and composite authentication fit into one execution model.
+
+3
+00:00:18,875 --> 00:00:23,189
+We will stay at a practical architecture level.
+
+4
+00:00:23,189 --> 00:00:38,289
+The examples come from the current framework implementation, and the emphasis is on the responsibilities of each class, the runtime flow, and what a test author actually writes.
+
+5
+00:00:39,089 --> 00:00:45,131
+The design starts by separating two responsibilities that are often combined.
+
+6
+00:00:45,131 --> 00:00:50,623
+A token provider answers where an access token comes from.
+
+7
+00:00:50,623 --> 00:01:04,354
+It might call a username and password login endpoint, perform an OAuth client credentials grant, or return a token supplied by an external secret store.
+
+8
+00:01:04,354 --> 00:01:10,395
+A request authenticator answers how credentials modify an outgoing HTTP request.
+
+9
+00:01:10,395 --> 00:01:14,240
+A bearer authenticator adds the Authorization header.
+
+10
+00:01:14,240 --> 00:01:19,732
+An API key authenticator adds a header or query parameter.
+
+11
+00:01:19,732 --> 00:01:25,773
+This separation lets several acquisition protocols feed the same bearer mechanism.
+
+12
+00:01:25,773 --> 00:01:31,815
+It also keeps caching and refresh logic independent from request construction.
+
+13
+00:01:32,615 --> 00:01:37,069
+The YAML contains two authentication catalogs.
+
+14
+00:01:37,069 --> 00:01:40,038
+Token providers describe acquisition.
+
+15
+00:01:40,038 --> 00:01:43,007
+Profiles describe request authentication.
+
+16
+00:01:43,007 --> 00:01:54,883
+The checkout-user provider names the auth service, username, logical password reference, login path, and refresh path.
+
+17
+00:01:54,883 --> 00:02:03,048
+The user-jwt profile points to that provider and declares bearer authentication.
+
+18
+00:02:03,048 --> 00:02:08,243
+Services can then name a default profile.
+
+19
+00:02:08,243 --> 00:02:11,955
+Secrets never appear in YAML.
+
+20
+00:02:11,955 --> 00:02:20,119
+A logical reference such as checkout-user-password becomes the environment variable TAF_SECRET_CHECKOUT_USER_PASSWORD.
+
+21
+00:02:20,119 --> 00:02:30,511
+ConfigLoader converts this data into immutable records and validates references before any test runs.
+
+22
+00:02:31,311 --> 00:02:46,311
+At suite startup, SuiteConfigListener loads the selected environment, validates the complete catalog, constructs the authentication runtime, and stores both objects as TestNG suite attributes.
+
+23
+00:02:46,311 --> 00:02:56,311
+AuthenticationRuntimeFactory builds one runtime provider for every named token provider, then builds every named request profile.
+
+24
+00:02:56,311 --> 00:03:04,436
+Token caches are suite scoped, so parallel tests using checkout-user share one cache.
+
+25
+00:03:04,436 --> 00:03:11,311
+A TestContext remains test scoped and carries correlation information, not tokens.
+
+26
+00:03:11,311 --> 00:03:22,561
+BaseApiTest retrieves the shared runtime and creates an ApiClient for a named service and the current test context.
+
+27
+00:03:22,561 --> 00:03:29,436
+This lifecycle avoids repeated login while keeping mutable test state isolated.
+
+28
+00:03:30,236 --> 00:03:37,698
+For the ordinary user flow, order-service declares user-jwt as its default profile.
+
+29
+00:03:37,698 --> 00:03:43,916
+When a test calls orders.create, the authentication runtime selects user-jwt.
+
+30
+00:03:43,916 --> 00:03:50,134
+BearerAuthenticator asks the checkout-user access token provider for a token.
+
+31
+00:03:50,134 --> 00:03:56,974
+On the first request, the caching provider invokes the password-login TokenAcquirer.
+
+32
+00:03:56,974 --> 00:04:11,898
+That strategy creates an unauthenticated client for auth-service, posts LoginRequest to the configured login path, maps LoginResponse, and converts it into a framework TokenGrant.
+
+33
+00:04:11,898 --> 00:04:18,737
+The bearer authenticator then adds Authorization colon Bearer plus the token.
+
+34
+00:04:18,737 --> 00:04:23,712
+The test never requests or passes that token.
+
+35
+00:04:24,512 --> 00:04:30,735
+CachingAccessTokenProvider keeps the token lifecycle out of both tests and request authenticators.
+
+36
+00:04:30,735 --> 00:04:39,550
+A normal request reads the volatile cached value and returns immediately when the token is still usable.
+
+37
+00:04:39,550 --> 00:04:43,699
+A stale or missing value enters a lock.
+
+38
+00:04:43,699 --> 00:04:52,514
+The cache checks again after acquiring the lock because another test thread may already have refreshed it.
+
+39
+00:04:52,514 --> 00:04:58,737
+This produces single-flight behavior: many parallel requests cause one acquisition or refresh.
+
+40
+00:04:58,737 --> 00:05:09,627
+The provider refreshes early, using ten percent of the token lifetime with a safety margin bounded between one and thirty seconds.
+
+41
+00:05:09,627 --> 00:05:13,257
+Password login can use its refresh token.
+
+42
+00:05:13,257 --> 00:05:19,998
+OAuth client credentials has no refresh token, so it performs a new acquisition.
+
+43
+00:05:20,799 --> 00:05:24,716
+The automation-client provider represents a machine identity.
+
+44
+00:05:24,716 --> 00:05:35,346
+Its public client ID and requested scopes remain in YAML, while the client secret comes from the credential source.
+
+45
+00:05:35,346 --> 00:05:46,536
+AuthApi sends the token request with HTTP Basic credentials and a form body containing the client credentials grant and scope.
+
+46
+00:05:46,536 --> 00:05:51,013
+OAuthTokenResponse becomes a TokenGrant with no refresh token.
+
+47
+00:05:51,013 --> 00:05:57,727
+The service-oauth profile uses the same BearerAuthenticator used by the password flow.
+
+48
+00:05:57,727 --> 00:06:02,203
+The only change is the AccessTokenProvider behind it.
+
+49
+00:06:02,203 --> 00:06:08,357
+Near expiry, the shared cache calls acquire again rather than refresh.
+
+50
+00:06:08,357 --> 00:06:16,750
+An API operation can own the service-oauth profile so normal tests only call the operation.
+
+51
+00:06:17,550 --> 00:06:23,386
+StaticAccessTokenProvider supports environments where another system already issues the token.
+
+52
+00:06:23,386 --> 00:06:27,472
+Configuration stores only a token credential reference.
+
+53
+00:06:27,472 --> 00:06:35,059
+Suite startup resolves the value and constructs a provider that returns it unchanged.
+
+54
+00:06:35,059 --> 00:06:39,144
+The same BearerAuthenticator attaches it to requests.
+
+55
+00:06:39,144 --> 00:06:45,564
+This provider has no expiry calculation, refresh call, or JWT decoding.
+
+56
+00:06:45,564 --> 00:06:52,567
+Secret rotation becomes visible only when a new suite runtime is constructed.
+
+57
+00:06:52,567 --> 00:07:05,991
+Static tokens are useful for controlled external integrations, but a renewable provider is safer for long suites when the authentication service is available.
+
+58
+00:07:05,991 --> 00:07:14,745
+The sample catalog supports this type, although it does not currently declare a static provider.
+
+59
+00:07:15,545 --> 00:07:22,951
+ApiKeyAuthenticator receives the resolved key, its placement, and the configured parameter name.
+
+60
+00:07:22,951 --> 00:07:26,037
+Header placement can produce X-API-Key.
+
+61
+00:07:26,037 --> 00:07:34,061
+Query placement can append an encoded api_key parameter without rebuilding unrelated query values.
+
+62
+00:07:34,061 --> 00:07:40,850
+In both cases, an explicit value supplied by the caller wins.
+
+63
+00:07:40,850 --> 00:07:53,811
+That rule is important for negative tests because an intentionally invalid key must not be replaced by the valid configured key.
+
+64
+00:07:53,811 --> 00:08:04,303
+The API key is a request credential, so it does not need an AccessTokenProvider or token cache.
+
+65
+00:08:04,303 --> 00:08:12,327
+The current test-api-key profile reads TAF_SECRET_TEST_API_KEY and attaches it as an X-API-Key header.
+
+66
+00:08:13,127 --> 00:08:17,341
+CompositeAuthenticator applies every member in declaration order.
+
+67
+00:08:17,341 --> 00:08:26,370
+The configured user-jwt-and-api-key profile first applies the bearer authenticator and then the API key authenticator.
+
+68
+00:08:26,370 --> 00:08:37,807
+Each member receives the immutable request copy returned by the previous member, so credentials accumulate on one outgoing request.
+
+69
+00:08:37,807 --> 00:08:41,419
+Composite means all requirements, not fallback.
+
+70
+00:08:41,419 --> 00:08:50,448
+The framework does not send one request with bearer and retry with an API key.
+
+71
+00:08:50,448 --> 00:08:57,070
+ConfigLoader verifies member names, rejects duplicate members, and performs cycle detection.
+
+72
+00:08:57,070 --> 00:09:07,303
+The runtime factory then recursively materializes the already validated graph and reuses authenticators that were built earlier.
+
+73
+00:09:08,103 --> 00:09:13,457
+AuthenticationRuntime resolves one effective profile with deterministic precedence.
+
+74
+00:09:13,457 --> 00:09:16,802
+An explicit request profile wins.
+
+75
+00:09:16,802 --> 00:09:20,148
+Otherwise the operation profile wins.
+
+76
+00:09:20,148 --> 00:09:23,494
+Otherwise the service default applies.
+
+77
+00:09:23,494 --> 00:09:28,848
+If none exists, the request has no authentication.
+
+78
+00:09:28,848 --> 00:09:32,863
+DISABLED is different from ordinary inheritance.
+
+79
+00:09:32,863 --> 00:09:40,224
+It deliberately suppresses operation and service defaults, which enables missing-authentication tests.
+
+80
+00:09:40,224 --> 00:09:51,600
+The framework does not infer profiles from paths and never tries another profile after a rejected response.
+
+81
+00:09:51,600 --> 00:09:58,961
+Stable policy normally belongs to the API operation or service configuration.
+
+82
+00:09:58,961 --> 00:10:04,984
+Request-level selection should remain an exception for authentication-specific tests.
+
+83
+00:10:05,784 --> 00:10:11,076
+ApiClient prepares the neutral HttpRequest before executing interceptors.
+
+84
+00:10:11,076 --> 00:10:17,691
+When an AuthenticationRuntime exists, it prepends AuthenticationInterceptor for that request.
+
+85
+00:10:17,691 --> 00:10:30,260
+The interceptor passes the request selection, operation profile, service default, and TestContext to AuthenticationRuntime, then forwards the authenticated request.
+
+86
+00:10:30,260 --> 00:10:41,506
+Common headers and correlation follow, and logging runs after those mutations so diagnostics describe the final request.
+
+87
+00:10:41,506 --> 00:10:45,475
+Sensitive values must therefore be redacted.
+
+88
+00:10:45,475 --> 00:10:51,429
+The transport remains unaware of profiles and token providers.
+
+89
+00:10:51,429 --> 00:11:04,659
+Token endpoint clients deliberately omit AuthenticationRuntime, preventing an infinite cycle in which obtaining a token would itself require a token.
+
+90
+00:11:05,459 --> 00:11:10,149
+The intended test experience is intentionally boring.
+
+91
+00:11:10,149 --> 00:11:21,538
+A normal order test creates a context, creates OrderApi for order-service, calls create, and asserts the response.
+
+92
+00:11:21,538 --> 00:11:28,907
+The service default supplies user-jwt without token plumbing in the test.
+
+93
+00:11:28,907 --> 00:11:32,257
+Negative tests retain explicit control.
+
+94
+00:11:32,257 --> 00:11:35,607
+disableAuthentication sends no framework credentials.
+
+95
+00:11:35,607 --> 00:11:45,656
+Supplying an Authorization header preserves an invalid token because BearerAuthenticator does not overwrite caller input.
+
+96
+00:11:45,656 --> 00:11:50,346
+The same principle applies to API keys.
+
+97
+00:11:50,346 --> 00:12:03,745
+Tests own expected status codes and business assertions, while authentication infrastructure owns secret access, acquisition, caching, refresh, and request modification.
+
+98
+00:12:04,544 --> 00:12:12,629
+The framework uses Strategy for token providers, token acquirers, and request authenticators.
+
+99
+00:12:12,629 --> 00:12:16,672
+AuthenticationRuntimeFactory acts as the composition root.
+
+100
+00:12:16,672 --> 00:12:22,062
+AuthenticationRuntime is a named registry with deterministic policy.
+
+101
+00:12:22,062 --> 00:12:30,821
+CompositeAuthenticator implements the Composite pattern, and AuthenticationInterceptor joins the HTTP chain of responsibility.
+
+102
+00:12:30,821 --> 00:12:36,212
+The design follows single responsibility and dependency inversion.
+
+103
+00:12:36,212 --> 00:12:39,580
+It also sets conservative boundaries.
+
+104
+00:12:39,580 --> 00:12:41,602
+Tokens remain opaque.
+
+105
+00:12:41,602 --> 00:12:47,666
+A four-oh-one does not trigger automatic refresh or replay.
+
+106
+00:12:47,666 --> 00:12:54,404
+The runtime does not guess a scheme from the URL.
+
+107
+00:12:54,404 --> 00:13:05,184
+Those choices prevent hidden retries, accidental duplicate side effects, and authentication defects that appear to pass.
+
+108
+00:13:05,984 --> 00:13:19,033
+The existing tests cover direct login and refresh behavior, service-default JWT bearer calls, authenticated checkout, missing authentication, and invalid bearer tokens.
+
+109
+00:13:19,033 --> 00:13:28,975
+The repository also configures OAuth, API key, and composite profiles and provides AuthenticationScenarioApi methods for them.
+
+110
+00:13:28,975 --> 00:13:37,053
+However, the current TestNG suite does not appear to invoke those scenario methods.
+
+111
+00:13:37,053 --> 00:13:42,024
+Static token support is implemented but not configured.
+
+112
+00:13:42,024 --> 00:13:49,480
+Focused unit tests for cache timing and single-flight concurrency are also missing.
+
+113
+00:13:49,480 --> 00:14:00,665
+The architecture is coherent, but verification should be expanded around those paths before treating every scheme as proven.
+
+114
+00:14:01,465 --> 00:14:04,661
+Keep four words in mind.
+
+115
+00:14:04,661 --> 00:14:09,135
+Provider means where a token comes from.
+
+116
+00:14:09,135 --> 00:14:13,609
+Profile means how credentials modify a request.
+
+117
+00:14:13,609 --> 00:14:16,805
+Runtime means which profile applies.
+
+118
+00:14:16,805 --> 00:14:20,640
+Interceptor means where authentication joins execution.
+
+119
+00:14:20,640 --> 00:14:27,031
+Password login, OAuth, and static tokens all supply bearer authentication.
+
+120
+00:14:27,031 --> 00:14:30,227
+API keys modify requests directly.
+
+121
+00:14:30,227 --> 00:14:35,340
+Composite profiles apply several authenticators to one request.
+
+122
+00:14:35,340 --> 00:14:45,567
+Configuration defines stable policy, suite startup constructs shared runtime state, and ordinary tests express business intent.
+
+123
+00:14:45,567 --> 00:15:01,546
+With that model, each class has a clear place and adding a future authentication mechanism becomes a deliberate extension rather than another conditional inside ApiClient.

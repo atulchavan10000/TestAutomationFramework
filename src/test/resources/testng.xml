@@ -17,8 +17,9 @@
     </listeners>
 
     <test name="Jenkins API suite">
-        <!-- These classes produce exactly 104 TestNG invocations through their data providers. -->
+        <!-- Service coverage plus deterministic framework authentication-policy tests. -->
         <classes>
+            <class name="framework.authentication.AuthenticationRuntimeTest"/>
             <class name="health.ServiceHealthTest"/>
             <class name="users.UserServiceCoverageTest"/>
             <class name="authentication.AuthenticationServiceTest"/>
